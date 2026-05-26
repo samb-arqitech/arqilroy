@@ -22,19 +22,23 @@ func TestAnthropicCLIContract_InvocationArtifactIncludesStreamJSONAndVerbose(t *
 }`)
 	cxdbSrv := newCXDBTestServer(t)
 
-	cli := filepath.Join(t.TempDir(), "claude")
+	cli := filepath.Join(t.TempDir(), "kilroy-cursor-agent")
 	if err := os.WriteFile(cli, []byte(`#!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "--help" ]]; then
 cat <<'EOF'
-Usage: claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model MODEL
+Usage: kilroy-cursor-agent run --cwd <dir> --model <id> [--stream-json]
 EOF
 exit 0
 fi
+if [[ "${1:-}" == "run" ]]; then
 cat > status.json <<'JSON'
 {"status":"success","notes":"ok"}
 JSON
-echo '{"type":"done","text":"ok"}'
+echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}'
+exit 0
+fi
+exit 1
 `), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -79,40 +83,40 @@ echo '{"type":"done","text":"ok"}'
 	for _, v := range argvAny {
 		argv = append(argv, strings.TrimSpace(anyToString(v)))
 	}
-	if !hasArg(argv, "--output-format") || !hasArg(argv, "stream-json") {
-		t.Fatalf("expected stream-json contract flags in argv, got %v", argv)
+	if !hasArg(argv, "--stream-json") {
+		t.Fatalf("expected --stream-json in argv, got %v", argv)
 	}
-	if !hasArg(argv, "--verbose") {
-		t.Fatalf("expected --verbose for anthropic stream-json contract, got %v", argv)
+	if !hasArg(argv, "run") {
+		t.Fatalf("expected run subcommand in argv, got %v", argv)
 	}
 }
 
-func TestAnthropicCLIContract_PreflightFailsWhenVerboseCapabilityMissing(t *testing.T) {
+func TestAnthropicCLIContract_PreflightFailsWhenStreamJSONCapabilityMissing(t *testing.T) {
 	repo := initTestRepo(t)
 	catalog := writeCatalogForPreflight(t, `{
   "data": [
     {"id": "anthropic/claude-sonnet-4-20250514"}
   ]
 }`)
-	claudeCLI := writeFakeCLI(t, "claude", "Usage: claude -p --output-format stream-json --model MODEL", 0)
+	cursorCLI := writeFakeCLI(t, "kilroy-cursor-agent", "Usage: kilroy-cursor-agent run --model MODEL", 0)
 
 	cfg := testPreflightConfigForProviders(repo, catalog, map[string]BackendKind{
 		"anthropic": BackendCLI,
 	})
-	cfg.LLM.Providers["anthropic"] = ProviderConfig{Backend: BackendCLI, Executable: claudeCLI}
+	cfg.LLM.Providers["anthropic"] = ProviderConfig{Backend: BackendCLI, Executable: cursorCLI}
 	dot := singleProviderDot("anthropic", "claude-sonnet-4-20250514")
 
 	logsRoot := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := RunWithConfig(ctx, dot, cfg, RunOptions{RunID: "anthropic-contract-missing-verbose", LogsRoot: logsRoot, AllowTestShim: true})
+	_, err := RunWithConfig(ctx, dot, cfg, RunOptions{RunID: "anthropic-contract-missing-stream-json", LogsRoot: logsRoot, AllowTestShim: true})
 	if err == nil {
 		t.Fatalf("expected anthropic preflight failure, got nil")
 	}
 	if !strings.Contains(err.Error(), "preflight: provider anthropic capability probe missing required tokens") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "--verbose") {
-		t.Fatalf("expected missing --verbose token in error, got %v", err)
+	if !strings.Contains(err.Error(), "--stream-json") {
+		t.Fatalf("expected missing --stream-json token in error, got %v", err)
 	}
 }

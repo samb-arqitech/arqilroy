@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/danshapiro/kilroy/internal/cursoragent"
 	"github.com/danshapiro/kilroy/internal/providerspec"
 )
 
@@ -109,7 +110,12 @@ func providerConfigFor(cfg *RunConfigFile, provider string) (ProviderConfig, str
 }
 
 func configuredProviderPathOverrides() []string {
-	keys := []string{"KILROY_CODEX_PATH", "KILROY_CLAUDE_PATH", "KILROY_GEMINI_PATH"}
+	keys := []string{
+		cursoragent.EnvPath,
+		"KILROY_CODEX_PATH",
+		"KILROY_CLAUDE_PATH",
+		"KILROY_GEMINI_PATH",
+	}
 	var set []string
 	for _, key := range keys {
 		if strings.TrimSpace(os.Getenv(key)) != "" {
@@ -125,7 +131,19 @@ func providerDefaultExecutable(provider string) (exe string, envKey string, ok b
 	if spec == nil {
 		return "", "", false
 	}
+	if usesCursorAgentCLI(provider) {
+		return cursoragent.ResolveExecutable(), providerPathOverrideEnvKey(provider), true
+	}
 	return strings.TrimSpace(spec.DefaultExecutable), providerPathOverrideEnvKey(provider), true
+}
+
+func usesCursorAgentCLI(provider string) bool {
+	switch normalizeProviderKey(provider) {
+	case "openai", "anthropic", "google":
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultCLISpecForProvider(provider string) *providerspec.CLISpec {
@@ -143,18 +161,26 @@ func defaultCLISpecForProvider(provider string) *providerspec.CLISpec {
 func providerPathOverrideEnvKey(provider string) string {
 	switch normalizeProviderKey(provider) {
 	case "openai":
-		return "KILROY_CODEX_PATH"
+		return cursoragent.EnvPath
 	case "anthropic":
-		return "KILROY_CLAUDE_PATH"
+		return cursoragent.EnvPath
 	case "google":
-		return "KILROY_GEMINI_PATH"
+		return cursoragent.EnvPath
 	default:
 		return ""
 	}
 }
 
 func materializeCLIInvocation(spec providerspec.CLISpec, modelID, worktree, prompt string) (string, []string) {
+	return materializeCLIInvocationForProvider("", spec, modelID, worktree, prompt)
+}
+
+func materializeCLIInvocationForProvider(provider string, spec providerspec.CLISpec, modelID, worktree, prompt string) (string, []string) {
 	exe := strings.TrimSpace(spec.DefaultExecutable)
+	if usesCursorAgentCLI(provider) {
+		exe = cursoragent.ResolveExecutable()
+		modelID = cursoragent.ToCursorModelID(provider, modelID)
+	}
 	args := make([]string, 0, len(spec.InvocationTemplate))
 	for _, token := range spec.InvocationTemplate {
 		repl := token

@@ -7,13 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/danshapiro/kilroy/internal/attractor/engine"
 	"github.com/danshapiro/kilroy/internal/attractor/model"
 	"github.com/danshapiro/kilroy/internal/attractor/validate"
+	"github.com/danshapiro/kilroy/internal/cursoragent"
 )
 
 // Options configures a review run.
@@ -247,7 +247,7 @@ func findStartNode(g *model.Graph) string {
 	return ""
 }
 
-// analyzeLoop calls a claude -p expert to evaluate one cycle.
+// analyzeLoop calls the Cursor SDK bridge to evaluate one cycle.
 func analyzeLoop(ctx context.Context, g *model.Graph, cycle CycleEdge, diags []validate.Diagnostic, opts Options) LoopAnalysis {
 	analysis := LoopAnalysis{
 		EntryNode:  cycle.To,
@@ -261,28 +261,30 @@ func analyzeLoop(ctx context.Context, g *model.Graph, cycle CycleEdge, diags []v
 	}
 
 	prompt := buildLoopPrompt(g, cycle, diags)
-	exe := claudeExe()
-	cmd := exec.CommandContext(ctx, exe,
-		"-p",
-		"--dangerously-skip-permissions",
-		"--output-format", "json",
-		"--max-turns", strconv.Itoa(maxTurns),
-		prompt,
-	)
+	_ = maxTurns
+	exe := cursorAgentExe()
+	workDir := "."
 	if opts.RepoPath != "" {
-		cmd.Dir = opts.RepoPath
+		workDir = opts.RepoPath
 	}
+	cmd := exec.CommandContext(ctx, exe,
+		"run",
+		"--cwd", workDir,
+		"--model", cursoragent.DefaultModel,
+		"--output-format", "json",
+	)
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Env = reviewFilteredEnv()
 
 	out, err := cmd.Output()
 	if err != nil {
 		analysis.Verdict = "error"
 		analysis.Score = 0
-		analysis.Issues = []string{fmt.Sprintf("claude -p invocation failed: %v", err)}
+		analysis.Issues = []string{fmt.Sprintf("cursor agent invocation failed: %v", err)}
 		return analysis
 	}
 
-	// Parse the claude JSON envelope: {"result": "...", "is_error": bool, ...}
+	// Parse the JSON envelope: {"result": "...", "is_error": bool, ...}
 	var envelope struct {
 		Result  string `json:"result"`
 		IsError bool   `json:"is_error"`
@@ -290,13 +292,13 @@ func analyzeLoop(ctx context.Context, g *model.Graph, cycle CycleEdge, diags []v
 	if err := json.Unmarshal(out, &envelope); err != nil {
 		analysis.Verdict = "warning"
 		analysis.Score = 50
-		analysis.Issues = []string{fmt.Sprintf("could not parse claude output envelope: %v", err)}
+		analysis.Issues = []string{fmt.Sprintf("could not parse cursor agent output envelope: %v", err)}
 		return analysis
 	}
 	if envelope.IsError {
 		analysis.Verdict = "error"
 		analysis.Score = 0
-		analysis.Issues = []string{fmt.Sprintf("claude returned an error: %s", envelope.Result)}
+		analysis.Issues = []string{fmt.Sprintf("cursor agent returned an error: %s", envelope.Result)}
 		return analysis
 	}
 
@@ -438,9 +440,12 @@ func reviewFilteredEnv() []string {
 	return out
 }
 
-func claudeExe() string {
-	if v := strings.TrimSpace(os.Getenv("KILROY_CLAUDE_PATH")); v != "" {
+func cursorAgentExe() string {
+	if v := strings.TrimSpace(os.Getenv("KILROY_CURSOR_AGENT_PATH")); v != "" {
 		return v
 	}
-	return "claude"
+	if v := strings.TrimSpace(os.Getenv(cursoragent.EnvPath)); v != "" {
+		return v
+	}
+	return cursoragent.ResolveExecutable()
 }

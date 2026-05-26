@@ -1,0 +1,24 @@
+{
+  "name": "@kilroy/cursor-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kilroy bridge to @cursor/sdk for local agent runs",
+  "bin": {
+    "kilroy-cursor-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

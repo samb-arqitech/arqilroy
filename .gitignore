@@ -14,5 +14,7 @@
 
 # GoReleaser build output
 /dist/
+/scripts/cursor-agent/node_modules/
+/scripts/cursor-agent/dist/
 firebase-debug.log
 .claude/worktrees/

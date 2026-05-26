@@ -21,6 +21,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node
+        uses: actions/setup-node@49933ea52886caeca8642d1b84af00acd30e6e99 # v4
+        with:
+          node-version: "22"
+
+      - name: Build Cursor SDK bridge
+        run: npm ci && npm run build
+        working-directory: scripts/cursor-agent
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)

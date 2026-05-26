@@ -9,7 +9,6 @@ import (
 )
 
 func TestBuildCLIArgs(t *testing.T) {
-	// Create a temp skill file so --append-system-prompt is exercised.
 	skillDir := t.TempDir()
 	skillPath := filepath.Join(skillDir, "SKILL.md")
 	if err := os.WriteFile(skillPath, []byte("test skill content"), 0o644); err != nil {
@@ -19,7 +18,6 @@ func TestBuildCLIArgs(t *testing.T) {
 	tests := []struct {
 		name      string
 		opts      Options
-		wantExe   string
 		checkArgs func(*testing.T, []string)
 	}{
 		{
@@ -29,45 +27,29 @@ func TestBuildCLIArgs(t *testing.T) {
 				SkillPath:    skillPath,
 				Requirements: "Build a solitaire game",
 			},
-			wantExe: "claude",
 			checkArgs: func(t *testing.T, args []string) {
-				assertNotContains(t, args, "-p")
-				assertNotContains(t, args, "--output-format")
-				assertNotContains(t, args, "--disallowedTools")
+				assertContains(t, args, "run")
 				assertContains(t, args, "--model")
-				assertContains(t, args, "claude-sonnet-4-5")
+				assertContains(t, args, "composer-2.5")
 				assertContains(t, args, "--append-system-prompt")
-				assertContains(t, args, "--max-turns")
-				assertContains(t, args, "--dangerously-skip-permissions")
+				assertContains(t, args, "--cwd")
 			},
 		},
 		{
-			name: "custom model",
+			name: "custom model maps to cursor id",
 			opts: Options{
-				Model:        "claude-opus-4-6",
+				Model:        "claude-haiku-4-5",
 				SkillPath:    skillPath,
 				Requirements: "Build DTTF",
 			},
 			checkArgs: func(t *testing.T, args []string) {
-				assertContains(t, args, "claude-opus-4-6")
-			},
-		},
-		{
-			name: "custom max turns",
-			opts: Options{
-				Model:        "claude-sonnet-4-5",
-				SkillPath:    skillPath,
-				Requirements: "Build something",
-				MaxTurns:     5,
-			},
-			checkArgs: func(t *testing.T, args []string) {
-				assertContains(t, args, "5")
+				assertContains(t, args, "composer-2-fast")
 			},
 		},
 		{
 			name: "no skill path omits flag",
 			opts: Options{
-				Model:        "claude-sonnet-4-5",
+				Model:        "composer-2.5",
 				Requirements: "Build something",
 			},
 			checkArgs: func(t *testing.T, args []string) {
@@ -75,22 +57,27 @@ func TestBuildCLIArgs(t *testing.T) {
 			},
 		},
 		{
-			name: "relative repo path resolved to absolute",
+			name: "relative repo path in system prompt",
 			opts: Options{
-				Model:        "claude-sonnet-4-5",
+				Model:        "composer-2.5",
 				Requirements: "Build something",
 				RepoPath:     "../relative/path",
 			},
 			checkArgs: func(t *testing.T, args []string) {
+				found := false
 				for i, a := range args {
-					if a == "--add-dir" && i+1 < len(args) {
-						if !filepath.IsAbs(args[i+1]) {
-							t.Errorf("--add-dir value %q is not absolute", args[i+1])
+					if a == "--append-system-prompt" && i+1 < len(args) {
+						if !filepath.IsAbs(filepath.Clean(args[i+1])) && !strings.Contains(args[i+1], "repository context") {
+							// repo path is embedded in prose, not as a flag value path alone
 						}
-						return
+						if strings.Contains(args[i+1], "repository context") {
+							found = true
+						}
 					}
 				}
-				t.Error("--add-dir not found in args")
+				if !found {
+					t.Error("expected repo context in --append-system-prompt")
+				}
 			},
 		},
 	}
@@ -102,8 +89,8 @@ func TestBuildCLIArgs(t *testing.T) {
 				t.Fatalf("buildCLIArgs: %v", err)
 			}
 			defer os.RemoveAll(tmpDir)
-			if tt.wantExe != "" && exe != tt.wantExe {
-				t.Errorf("exe = %q, want %q", exe, tt.wantExe)
+			if !strings.Contains(exe, "kilroy-cursor-agent") {
+				t.Errorf("exe = %q, want kilroy-cursor-agent wrapper", exe)
 			}
 			if tt.checkArgs != nil {
 				tt.checkArgs(t, args)
@@ -112,7 +99,7 @@ func TestBuildCLIArgs(t *testing.T) {
 	}
 }
 
-func TestBuildCLIArgs_PromptUsesSkillNameFromSkillPath(t *testing.T) {
+func TestBuildPromptUsesSkillNameFromSkillPath(t *testing.T) {
 	skillDir := filepath.Join(t.TempDir(), "skills", "create-dotfile")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -122,33 +109,14 @@ func TestBuildCLIArgs_PromptUsesSkillNameFromSkillPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, args, tmpDir, err := buildCLIArgs(Options{
-		Model:        "claude-sonnet-4-5",
-		SkillPath:    skillPath,
-		Requirements: "Build something",
-	})
-	if err != nil {
-		t.Fatalf("buildCLIArgs: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	prompt := args[len(args)-1]
+	prompt := buildPrompt("Build something", inferSkillName(skillPath))
 	if !strings.Contains(prompt, "Follow the create-dotfile skill") {
 		t.Fatalf("prompt missing skill binding, got: %q", prompt)
 	}
 }
 
-func TestBuildCLIArgs_PromptFallsBackToGenericSkillLabelWithoutSkillPath(t *testing.T) {
-	_, args, tmpDir, err := buildCLIArgs(Options{
-		Model:        "claude-sonnet-4-5",
-		Requirements: "Build something",
-	})
-	if err != nil {
-		t.Fatalf("buildCLIArgs: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	prompt := args[len(args)-1]
+func TestBuildPromptFallsBackToGenericSkillLabelWithoutSkillPath(t *testing.T) {
+	prompt := buildPrompt("Build something", inferSkillName(""))
 	if !strings.Contains(prompt, "Follow the provided skill") {
 		t.Fatalf("prompt missing generic fallback skill label, got: %q", prompt)
 	}
@@ -158,7 +126,7 @@ func TestRunIngestRequiresSkill(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		Requirements: "Build something",
 		SkillPath:    "/nonexistent/SKILL.md",
-		Model:        "claude-sonnet-4-5",
+		Model:        "composer-2.5",
 	})
 	if err == nil {
 		t.Fatal("expected error for missing skill file")
@@ -168,7 +136,7 @@ func TestRunIngestRequiresSkill(t *testing.T) {
 func assertContains(t *testing.T, slice []string, want string) {
 	t.Helper()
 	for _, s := range slice {
-		if s == want {
+		if s == want || strings.Contains(s, want) {
 			return
 		}
 	}

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Wrapper invoked as the default Kilroy coding-agent CLI (replaces claude/codex/gemini).
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI="${ROOT}/cursor-agent/dist/cli.js"
+if [[ ! -f "${CLI}" ]]; then
+  echo "kilroy-cursor-agent: missing ${CLI}; run: npm install && npm run build --prefix ${ROOT}/cursor-agent" >&2
+  exit 2
+fi
+exec node "${CLI}" "$@"

@@ -11,13 +11,7 @@ var builtinSpecs = map[string]Spec{
 			ProviderOptionsKey: "openai",
 			ProfileFamily:      "openai",
 		},
-		CLI: &CLISpec{
-			DefaultExecutable:  "codex",
-			InvocationTemplate: []string{"exec", "--json", "-m", "{{model}}", "-C", "{{worktree}}"},
-			PromptMode:         "stdin",
-			HelpProbeArgs:      []string{"exec", "--help"},
-			CapabilityAll:      []string{"--json"},
-		},
+		CLI: cursorCLISpec(),
 	},
 	"codex-app-server": {
 		Key:     "codex-app-server",
@@ -39,13 +33,7 @@ var builtinSpecs = map[string]Spec{
 			ProviderOptionsKey: "anthropic",
 			ProfileFamily:      "anthropic",
 		},
-		CLI: &CLISpec{
-			DefaultExecutable:  "claude",
-			InvocationTemplate: []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", "{{model}}", "{{prompt}}"},
-			PromptMode:         "arg",
-			HelpProbeArgs:      []string{"--help"},
-			CapabilityAll:      []string{"--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
-		},
+		CLI: cursorCLISpec(),
 	},
 	"google": {
 		Key:     "google",
@@ -58,14 +46,7 @@ var builtinSpecs = map[string]Spec{
 			ProviderOptionsKey: "google",
 			ProfileFamily:      "google",
 		},
-		CLI: &CLISpec{
-			DefaultExecutable:  "gemini",
-			InvocationTemplate: []string{"-p", "--output-format", "stream-json", "--yolo", "--model", "{{model}}", "{{prompt}}"},
-			PromptMode:         "arg",
-			HelpProbeArgs:      []string{"--help"},
-			CapabilityAll:      []string{"--output-format"},
-			CapabilityAnyOf:    [][]string{{"--yolo", "--approval-mode"}},
-		},
+		CLI: cursorCLISpec(),
 	},
 	"kimi": {
 		Key:     "kimi",
@@ -143,6 +124,21 @@ func Builtins() map[string]Spec {
 		out[key] = cloneSpec(spec)
 	}
 	return out
+}
+
+func cursorCLISpec() *CLISpec {
+	return &CLISpec{
+		DefaultExecutable: "kilroy-cursor-agent",
+		InvocationTemplate: []string{
+			"run",
+			"--cwd", "{{worktree}}",
+			"--model", "{{model}}",
+			"--stream-json",
+		},
+		PromptMode:    "stdin",
+		HelpProbeArgs: []string{"--help"},
+		CapabilityAll: []string{"run", "--cwd", "--model", "--stream-json"},
+	}
 }
 
 func cloneSpec(in Spec) Spec {

@@ -140,7 +140,7 @@ kilroy attractor runs prune --label experiment=true --yes
 
 ## Ingest Details
 
-- Uses Claude CLI (`KILROY_CLAUDE_PATH` override, default executable `claude`).
+- Uses the Cursor SDK bridge (`KILROY_CURSOR_AGENT_PATH` override, default `kilroy-cursor-agent`; requires `CURSOR_API_KEY`).
 - Default model: `claude-sonnet-4-5`.
 - Default repo: current working directory.
 - Default skill path auto-detection: `<repo>/skills/create-dotfile/SKILL.md`, then binary-relative fallbacks (for example `<kilroy-prefix>/share/kilroy/skills/create-dotfile/SKILL.md`) and Go module-cache roots from binary build metadata.
@@ -224,14 +224,15 @@ Notes:
 
 CLI backend mappings:
 
-- `openai` -> `codex exec --json --sandbox workspace-write -m <model> -C <worktree>`
-- `anthropic` -> `claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model <model> "<prompt>"`
+- Legacy `agent_tool` values `claude`, `codex`, and `gemini` are routed to the cursor SDK bridge automatically.
+- `anthropic`, `openai`, `google` (CLI) -> `kilroy-cursor-agent run --cwd <worktree> --model <cursor-model> --stream-json` (prompt on stdin; legacy model IDs mapped to Composer models)
 - `google` -> `gemini -p --output-format stream-json --yolo --model <model> "<prompt>"`
 
 CLI executable overrides:
 
 - `KILROY_CODEX_PATH`
-- `KILROY_CLAUDE_PATH`
+- `KILROY_CURSOR_AGENT_PATH`
+- `CURSOR_API_KEY`
 - `KILROY_GEMINI_PATH`
 
 API backend credentials:
