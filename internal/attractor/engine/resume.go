@@ -56,6 +56,60 @@ func Resume(ctx context.Context, logsRoot string, ov ResumeOverrides) (*Result, 
 	return resumeFromLogsRoot(ctx, logsRoot, ov)
 }
 
+func resolveResumeCheckpointSHA(cp *runtime.Checkpoint, m *manifest, worktreeDir string, gitOps GitOps) (string, error) {
+	if cp == nil {
+		return "", fmt.Errorf("checkpoint is nil")
+	}
+	if m == nil {
+		return "", fmt.Errorf("manifest is nil")
+	}
+	if sha := strings.TrimSpace(cp.GitCommitSHA); sha != "" {
+		return sha, nil
+	}
+	if gitOps == nil {
+		return "", nil
+	}
+
+	type candidate struct {
+		source string
+		sha    string
+	}
+	var candidates []candidate
+	var probeErrors []string
+	if dir := strings.TrimSpace(worktreeDir); dir != "" {
+		if sha, err := gitOps.HeadSHA(dir); err == nil && strings.TrimSpace(sha) != "" {
+			candidates = append(candidates, candidate{source: "worktree HEAD", sha: strings.TrimSpace(sha)})
+		} else if err != nil {
+			probeErrors = append(probeErrors, fmt.Sprintf("worktree HEAD: %v", err))
+		}
+	}
+	if repoPath, runBranch := strings.TrimSpace(m.RepoPath), strings.TrimSpace(m.RunBranch); repoPath != "" && runBranch != "" {
+		if sha, err := gitOps.ResolveRef(repoPath, runBranch); err == nil && strings.TrimSpace(sha) != "" {
+			candidates = append(candidates, candidate{source: "run branch", sha: strings.TrimSpace(sha)})
+		} else if err != nil {
+			probeErrors = append(probeErrors, fmt.Sprintf("run branch %s: %v", runBranch, err))
+		}
+	}
+
+	var resolved candidate
+	for _, c := range candidates {
+		if resolved.sha == "" {
+			resolved = c
+			continue
+		}
+		if c.sha != resolved.sha {
+			return "", fmt.Errorf("checkpoint missing git_commit_sha and fallback SHAs disagree (%s=%s, %s=%s)", resolved.source, resolved.sha, c.source, c.sha)
+		}
+	}
+	if resolved.sha != "" {
+		return resolved.sha, nil
+	}
+	if len(probeErrors) > 0 {
+		return "", fmt.Errorf("checkpoint missing git_commit_sha; fallback probes failed: %s", strings.Join(probeErrors, "; "))
+	}
+	return "", fmt.Errorf("checkpoint missing git_commit_sha")
+}
+
 func resumeFromLogsRoot(ctx context.Context, logsRoot string, ov ResumeOverrides) (res *Result, err error) {
 	logsRoot = strings.TrimSpace(logsRoot)
 	if logsRoot == "" {
@@ -108,10 +162,6 @@ func resumeFromLogsRoot(ctx context.Context, logsRoot string, ov ResumeOverrides
 	}
 	if err := validateAbsoluteResumePaths(logsRoot, cp); err != nil {
 		return nil, err
-	}
-	checkpointSHA = strings.TrimSpace(cp.GitCommitSHA)
-	if strings.TrimSpace(cp.GitCommitSHA) == "" {
-		return nil, fmt.Errorf("checkpoint missing git_commit_sha")
 	}
 	dotSource, err := os.ReadFile(filepath.Join(logsRoot, "graph.dot"))
 	if err != nil {
@@ -232,6 +282,16 @@ func resumeFromLogsRoot(ctx context.Context, logsRoot string, ov ResumeOverrides
 	}
 	if strings.TrimSpace(prefix) == "" {
 		return nil, fmt.Errorf("resume: unable to derive run_branch_prefix from manifest/config")
+	}
+	checkpointSHA, err = resolveResumeCheckpointSHA(cp, m, opts.WorktreeDir, opts.GitOps)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(cp.GitCommitSHA) == "" && strings.TrimSpace(checkpointSHA) != "" {
+		cp.GitCommitSHA = checkpointSHA
+		if err := cp.Save(filepath.Join(logsRoot, "checkpoint.json")); err != nil {
+			return nil, fmt.Errorf("resume: repair checkpoint git_commit_sha: %w", err)
+		}
 	}
 	resolvedArtifactPolicy, err := restoreArtifactPolicyForResume(cp, cfg, ResolveArtifactPolicyInput{
 		LogsRoot: logsRoot,

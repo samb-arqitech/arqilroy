@@ -126,7 +126,8 @@ digraph G {
   start [shape=Mdiamond]
   exit  [shape=Msquare]
   a [shape=parallelogram, tool_command="echo hi > foo.txt"]
-  start -> a -> exit
+  start -> a
+  a -> exit [condition="outcome=success"]
 }
 `)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -205,7 +206,8 @@ digraph G {
   start [shape=Mdiamond]
   exit  [shape=Msquare]
   a [shape=parallelogram, tool_command="echo hi > foo.txt"]
-  start -> a -> exit
+  start -> a
+  a -> exit [condition="outcome=success"]
 }
 `)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -281,4 +283,110 @@ func TestNewResumeAgentBackend_LoadsProviderRuntimes(t *testing.T) {
 	if profile.ID() != "zai" {
 		t.Fatalf("profile ID: got %q want %q", profile.ID(), "zai")
 	}
+}
+
+func TestResolveResumeCheckpointSHA_FallsBackToRunBranchAndWorktree(t *testing.T) {
+	const freshSHA = "fresh-sha"
+
+	cp := runtime.NewCheckpoint()
+	cp.ContextValues["git_commit_sha"] = "stale-sha"
+	gitOps := resumeCheckpointSHAGitOps{
+		heads: map[string]string{"/logs/worktree": freshSHA},
+		refs:  map[string]string{"/repo\x00feat/run": freshSHA},
+	}
+
+	got, err := resolveResumeCheckpointSHA(cp, &manifest{RepoPath: "/repo", RunBranch: "feat/run"}, "/logs/worktree", gitOps)
+	if err != nil {
+		t.Fatalf("resolveResumeCheckpointSHA: %v", err)
+	}
+	if got != freshSHA {
+		t.Fatalf("sha: got %q want %q", got, freshSHA)
+	}
+}
+
+func TestResolveResumeCheckpointSHA_FailsOnDisagreeingFallbacks(t *testing.T) {
+	cp := runtime.NewCheckpoint()
+	gitOps := resumeCheckpointSHAGitOps{
+		heads: map[string]string{"/logs/worktree": "worktree-sha"},
+		refs:  map[string]string{"/repo\x00feat/run": "branch-sha"},
+	}
+
+	_, err := resolveResumeCheckpointSHA(cp, &manifest{RepoPath: "/repo", RunBranch: "feat/run"}, "/logs/worktree", gitOps)
+	if err == nil {
+		t.Fatal("expected fallback disagreement error, got nil")
+	}
+	if !strings.Contains(err.Error(), "fallback SHAs disagree") {
+		t.Fatalf("error: got %q, want fallback disagreement", err.Error())
+	}
+}
+
+func TestResolveResumeCheckpointSHA_AllowsMissingSHAWithoutGitOps(t *testing.T) {
+	cp := runtime.NewCheckpoint()
+
+	got, err := resolveResumeCheckpointSHA(cp, &manifest{}, "", nil)
+	if err != nil {
+		t.Fatalf("resolveResumeCheckpointSHA without GitOps: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("sha: got %q want empty", got)
+	}
+}
+
+type resumeCheckpointSHAGitOps struct {
+	heads map[string]string
+	refs  map[string]string
+}
+
+func (g resumeCheckpointSHAGitOps) ValidateRepo(string, bool) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) HeadSHA(dir string) (string, error) {
+	if sha := strings.TrimSpace(g.heads[dir]); sha != "" {
+		return sha, nil
+	}
+	return "", os.ErrNotExist
+}
+
+func (g resumeCheckpointSHAGitOps) ResolveRef(dir, ref string) (string, error) {
+	if sha := strings.TrimSpace(g.refs[dir+"\x00"+ref]); sha != "" {
+		return sha, nil
+	}
+	return "", os.ErrNotExist
+}
+
+func (g resumeCheckpointSHAGitOps) SetupRunWorkspace(string, string, string, string) error {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) Checkpoint(string, string, []string) (string, error) {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) CheckpointSimple(string, string) (string, error) {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) VerifyHeadSHA(string, string) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) CopyIgnoredFiles(string, string, ...string) error {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) SetupBranchWorkspace(string, string, string, string) error {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) RepairWorktree(string, string) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) MergeBranch(string, string) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) ResumeWorkspace(string, string, string, string) error {
+	panic("unused")
+}
+
+func (g resumeCheckpointSHAGitOps) PushBranch(string, string, string) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) RemoveWorktree(string, string) error { panic("unused") }
+
+func (g resumeCheckpointSHAGitOps) DiffStat(string, string, string) (int, int, int, error) {
+	panic("unused")
 }
