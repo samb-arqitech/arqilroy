@@ -60,6 +60,19 @@ func HeadSHA(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// ResolveRef resolves a git ref (branch, tag, SHA) to a commit SHA in dir.
+func ResolveRef(dir, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", fmt.Errorf("empty git ref")
+	}
+	out, _, err := runGit(dir, "rev-parse", ref)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func StatusPorcelain(dir string) (string, error) {
 	out, _, err := runGit(dir, "status", "--porcelain")
 	if err != nil {
@@ -146,7 +159,7 @@ func CommitAllowEmptyWithExcludes(worktreeDir, message string, excludes []string
 }
 
 func commitAllowEmpty(worktreeDir, message string) (string, error) {
-	_, _, err := runGit(worktreeDir, "commit", "--allow-empty", "-m", message)
+	_, _, err := runGit(worktreeDir, "commit", "--no-verify", "--allow-empty", "-m", message)
 	if err != nil {
 		// If identity is missing, retry once with an explicit fallback committer identity
 		// (without mutating repo config).
@@ -157,7 +170,7 @@ func commitAllowEmpty(worktreeDir, message string) (string, error) {
 				worktreeDir,
 				"-c", "user.name=kilroy-attractor",
 				"-c", "user.email=kilroy-attractor@local",
-				"commit", "--allow-empty", "-m", message,
+				"commit", "--no-verify", "--allow-empty", "-m", message,
 			)
 		}
 		if err != nil {

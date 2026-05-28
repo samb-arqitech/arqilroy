@@ -59,7 +59,7 @@ digraph P {
 		t.Fatalf("Save checkpoint: %v", err)
 	}
 
-	res2, err := Resume(ctx, res.LogsRoot)
+	res2, err := Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -173,7 +173,7 @@ digraph G {
 	}
 
 	// Resume should reset the branch to aSHA and re-run exit.
-	res2, err := Resume(ctx, res.LogsRoot)
+	res2, err := Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err != nil {
 		t.Fatalf("Resume() error: %v", err)
 	}

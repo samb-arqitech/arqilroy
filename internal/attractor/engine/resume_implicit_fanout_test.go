@@ -97,7 +97,7 @@ digraph G {
 	}
 
 	// Resume should dispatch implicit fan-out (branch_a, branch_b → synth) and succeed.
-	res2, err := Resume(ctx, res.LogsRoot)
+	res2, err := Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err != nil {
 		t.Fatalf("Resume() error: %v", err)
 	}

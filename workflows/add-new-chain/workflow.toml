@@ -1,0 +1,48 @@
+name = "add-new-chain"
+description = "Add a new blockchain network to atomic-swap-app with chain-type-aware branching (UTXO, EVM, TVM, SVM, Ledger, unknown). Assumes post DEV-2787/DEV-2986 baseline."
+version = "0.1.0"
+
+outputs = ["chain-integration-spec.md", "chain-checklist.md"]
+
+[[inputs]]
+name = "chain_name"
+description = "Human-readable chain name (e.g. Solana, Canton, Zcash)"
+required = true
+
+[[inputs]]
+name = "chain_type"
+description = "Chain VM archetype: utxo, evm, tvm, svm, ledger, or unknown"
+required = true
+
+[[inputs]]
+name = "network_id"
+description = "Internal network key matching NetworkType enum style (e.g. solana, canton, zcash)"
+required = true
+
+[[inputs]]
+name = "native_asset"
+description = "Native token symbol (e.g. SOL, AMULET, ZEC, DASH)"
+required = true
+
+[[inputs]]
+name = "supported_routes"
+description = "JSON object mapping sell asset to allowed buy assets, e.g. {\"SOL\":[\"BTC\"]}"
+required = true
+
+[[inputs]]
+name = "reference_chain"
+description = "Existing chain to clone patterns from (bitcoin, ethereum, tron, solana, canton). Defaults by chain_type if omitted."
+required = false
+
+[[inputs]]
+name = "feature_flag"
+description = "Optional build-time feature flag env var (e.g. CANTON_ENABLED)"
+required = false
+
+[[inputs]]
+name = "constraints"
+description = "Additional implementation constraints (address formats, scope limits, non-goals)"
+required = false
+
+[defaults]
+labels = { workflow = "add-new-chain", repo = "atomic-swap-app" }

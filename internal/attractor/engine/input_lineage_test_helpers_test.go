@@ -78,7 +78,7 @@ func mustParallelResultByStartNode(t *testing.T, results []parallelBranchResult,
 }
 
 func resumeFromCheckpointForTest(ctx context.Context, logsRoot string) error {
-	_, err := Resume(ctx, logsRoot)
+	_, err := Resume(ctx, logsRoot, ResumeOverrides{})
 	return err
 }
 

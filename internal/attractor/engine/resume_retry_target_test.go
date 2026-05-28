@@ -97,7 +97,7 @@ digraph G {
 	}
 
 	// Resume should use retry_target fallback to "fix" and succeed.
-	res2, err := Resume(ctx, res.LogsRoot)
+	res2, err := Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err != nil {
 		t.Fatalf("Resume() error: %v", err)
 	}

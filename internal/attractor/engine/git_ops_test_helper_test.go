@@ -32,6 +32,10 @@ func (g *testGitOps) HeadSHA(dir string) (string, error) {
 	return gitutil.HeadSHA(dir)
 }
 
+func (g *testGitOps) ResolveRef(dir, ref string) (string, error) {
+	return gitutil.ResolveRef(dir, ref)
+}
+
 func (g *testGitOps) SetupRunWorkspace(repoPath, worktreeDir, runBranch, baseSHA string) error {
 	if err := gitutil.CreateBranchAt(repoPath, runBranch, baseSHA); err != nil {
 		return err

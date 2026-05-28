@@ -31,6 +31,7 @@ func Cursor() Template {
 			}
 			return env
 		},
+		PromptFileFlag:   "--prompt-file",
 		StructuredOutput: true,
 		PromptPrefix:     "",
 		BusyIndicators:   []string{"[tool]", "[status]"},

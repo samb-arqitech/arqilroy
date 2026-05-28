@@ -1,0 +1,282 @@
+digraph add_new_chain {
+    graph [
+        goal="Add a new blockchain network to atomic-swap-app following feature/solana (SVM) and feature/canton (Ledger) patterns, with chain-type-aware branching for UTXO/EVM/TVM/SVM/Ledger/unknown chains. Assume dev includes merged PR #1487 (DEV-2787 chronological base/match) and PR #1493 (DEV-2986 remove reversed-direction fork). Never reintroduce isReversedDirectionTrade, VITE_ENABLE_REVERSED_DIRECTION, match_only_* FSM states, or asset-role base/match encoding.",
+        inputs="chain_name,chain_type,network_id,native_asset,supported_routes,reference_chain,feature_flag,constraints",
+        outputs="chain-integration-spec.md,chain-checklist.md",
+        rankdir=LR,
+        default_max_retry=3,
+        retry_target="plan_work",
+        fallback_retry_target="debate_consolidate",
+        loop_restart_signature_limit=5,
+        loop_restart_persist_keys="last_failing_acs",
+        provenance_version="1",
+        model_stylesheet="
+            * { llm_model: composer-2.5-fast; llm_provider: cursor; }
+        "
+    ]
+
+    exit [shape=Msquare, label="Exit"]
+
+    subgraph cluster_bootstrap {
+        label="Bootstrap"
+        start [shape=Mdiamond, label="Start"]
+
+        check_toolchain [
+            shape=parallelogram,
+            max_retries=0,
+            tool_command="sh .kilroy/package/scripts/check-toolchain.sh || { echo 'KILROY_VALIDATE_FAILURE: check-toolchain.sh missing or failed'; exit 1; }"
+        ]
+
+        expand_spec [
+            shape=box,
+            auto_status=true,
+            prompt="Create .ai/runs/$KILROY_RUN_ID/spec.md for adding chain $input.chain_name (type=$input.chain_type, network=$input.network_id, native=$input.native_asset).\n\nRead .kilroy/INPUT.md for all inputs. Include verbatim:\n- supported_routes JSON: $input.supported_routes\n- reference_chain: $input.reference_chain (or infer default: utxo→bitcoin, evm→ethereum, tvm→tron, svm→solana, ledger→canton)\n- feature_flag: $input.feature_flag\n- constraints: $input.constraints\n\nAnalyze reference branches:\n- git fetch origin feature/solana feature/canton 2>/dev/null || true\n- git diff --stat origin/dev...origin/feature/solana | tail -5\n- git diff --stat origin/dev...origin/feature/canton | tail -5\n\nSpec MUST cover: scope, chain_type integration pattern, chronological base/match constraints (DEV-2787), economic-legs routing (DEV-2986), deliverables by layer (shared/backend/client/mocknet), acceptance criteria, verification, non-goals.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"
+        ]
+
+        check_dod [
+            shape=box,
+            label="DoD exists?",
+            prompt="Check if .ai/runs/$KILROY_RUN_ID/definition_of_done.md exists and is adequate (not placeholder).\n\nIf adequate: {\"status\":\"has_dod\"} to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH).\nIf missing/inadequate: {\"status\":\"needs_dod\"}.\nOn error: include failure_class."
+        ]
+    }
+
+    subgraph cluster_dod {
+        label="DoD"
+        dod_fanout [shape=component, label="DoD Fan-Out"]
+        dod_a [shape=box, class="branch-a", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_a.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        dod_b [shape=box, class="branch-b", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_b.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        dod_c [shape=box, class="branch-c", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_c.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        consolidate_dod [shape=box, auto_status=true, prompt="Synthesize dod_a/b/c into .ai/runs/$KILROY_RUN_ID/definition_of_done.md. Read parallel_results.json worktrees if present.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+    }
+
+    subgraph cluster_analyze {
+        label="Reference Analysis"
+        analyze_fanout [shape=component, label="Analyze Fan-Out"]
+
+        analyze_shared [
+            shape=box,
+            class="analyze",
+            auto_status=true,
+            prompt="Analyze how $input.reference_chain (or chain_type default) added shared-layer support. Compare origin/dev...origin/feature/$input.reference_chain or feature/solana/feature/canton.\n\nDocument in .ai/runs/$KILROY_RUN_ID/design_shared.md (<300 lines): assets.ts, blockchain.ts, asset-network-validation.ts, trade-route-validation.ts, trade-lock-order.ts changes needed for $input.network_id/$input.native_asset.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+
+        analyze_backend [
+            shape=box,
+            class="analyze",
+            auto_status=true,
+            prompt="Analyze backend integration for reference chain. Document in .ai/runs/$KILROY_RUN_ID/design_backend.md: prisma enums/migrations, blockchain.service, provider registry, polling-scheduler, transaction-detector, tx-verifier, tranche.service, config files.\n\nFor ledger chains: canton/* services pattern. For svm: lib/solana/* + providers/solana/*.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+
+        analyze_client [
+            shape=box,
+            class="analyze",
+            auto_status=true,
+            prompt="Analyze client integration. Document in .ai/runs/$KILROY_RUN_ID/design_client.md: blockchain-config.ts, wallet components, preflight checks, htlc-{chain} lib, SwapFlow/AssetSelection, chain-icon, address validation.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+
+        analyze_mocknet [
+            shape=box,
+            class="analyze",
+            auto_status=true,
+            prompt="Analyze mocknet/bootstrap changes for reference chain. Document in .ai/runs/$KILROY_RUN_ID/design_mocknet.md: seed scripts, reset scripts, bootstrap.sh, env examples, test fixtures.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+
+        merge_analysis [
+            shape=box,
+            auto_status=true,
+            prompt="Verify all design docs exist: design_shared.md, design_backend.md, design_client.md, design_mocknet.md. Cross-check consistency.\n\nProduce .ai/runs/$KILROY_RUN_ID/chain-checklist.md — file-by-file checklist with [ ] items derived from reference branch diffs.\n\nOn missing docs: {\"status\":\"fail\",\"failure_reason\":\"missing design docs\",\"failure_signature\":\"missing_design_docs\",\"failure_class\":\"deterministic\"} to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+        ]
+    }
+
+    classify_chain_type [
+        shape=box,
+        label="Classify chain type",
+        prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md and $input.chain_type.\n\nIf chain_type=unknown: write .ai/runs/$KILROY_RUN_ID/research_required.md explaining VM model research needed, then {\"status\":\"needs_research\"}.\n\nOtherwise map to integration template and write .ai/runs/$KILROY_RUN_ID/chain-integration-spec.md:\n- utxo → clone bitcoin/htlc-btc patterns\n- evm → clone ethereum/htlc-evm + viem\n- tvm → clone tron/htlc-tron\n- svm → clone solana/escrow-solana Anchor program\n- ledger → clone canton DAML + ledger watcher\n\nSet outcome in status field. Write to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+    ]
+
+    route_chain_type [shape=diamond, label="Chain type route?"]
+
+    research_chain [
+        shape=box,
+        class="hard",
+        auto_status=true,
+        prompt="chain_type=unknown. Research $input.chain_name VM model, HTLC/escrow feasibility, SDK availability, address formats, block time, tx id format.\n\nWrite .ai/runs/$KILROY_RUN_ID/chain_research.md with recommendation: which existing archetype (utxo/evm/tvm/svm/ledger) to follow or why unsupported.\n\nUpdate .ai/runs/$KILROY_RUN_ID/chain-integration-spec.md.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+    ]
+
+    subgraph cluster_planning {
+        label="Planning"
+        plan_fanout [shape=component, label="Plan Fan-Out"]
+        plan_a [shape=box, class="branch-a", auto_status=true, prompt="Read spec, DoD, design docs, chain-integration-spec.md. Write .ai/runs/$KILROY_RUN_ID/plan_a.md — ordered implementation plan respecting layer deps: shared→backend→client→mocknet→tests→skills.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        plan_b [shape=box, class="branch-b", auto_status=true, prompt="Read spec, DoD, design docs, chain-integration-spec.md. Write .ai/runs/$KILROY_RUN_ID/plan_b.md — ordered implementation plan respecting layer deps: shared→backend→client→mocknet→tests→skills.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        plan_c [shape=box, class="branch-c", auto_status=true, prompt="Read spec, DoD, design docs, chain-integration-spec.md. Write .ai/runs/$KILROY_RUN_ID/plan_c.md — ordered implementation plan respecting layer deps: shared→backend→client→mocknet→tests→skills.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        debate_consolidate [shape=box, auto_status=true, prompt="Synthesize plan_a/b/c into .ai/runs/$KILROY_RUN_ID/plan_final.md. Ensure chronological base/match encoding in trade creation and no reversed-direction fork.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        plan_work [shape=box, label="Plan ready", auto_status=true, prompt="Confirm plan_final.md exists and is actionable.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+    }
+
+    subgraph cluster_implement {
+        label="Implement By Layer"
+        implement_shared [
+            shape=box,
+            class="hard",
+            max_agent_turns=300,
+            agent_mode="agent_loop",
+            auto_status=true,
+            prompt="Implement shared layer for $input.network_id per plan_final.md and design_shared.md.\n\nTouch: shared/src/constants/assets.ts, blockchain.ts, asset-network-validation.ts, trade-route-validation.ts, trade-lock-order.ts (if new routes).\n\nUse resolveTradeEconomicLegs / chronological encoding. Commit changes.\n\nOn repair pass: run sh scripts/validate-build.sh first.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+        implement_backend [
+            shape=box,
+            class="hard",
+            max_agent_turns=300,
+            agent_mode="agent_loop",
+            auto_status=true,
+            prompt="Implement backend layer: prisma migration, schema enums, services, providers, config for $input.network_id.\n\nFollow design_backend.md. For svm: lib/solana + providers. For ledger: services/canton pattern. Widen tx id columns if needed.\n\nCommit. On repair: sh scripts/validate-build.sh.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+        implement_client [
+            shape=box,
+            class="hard",
+            max_agent_turns=300,
+            agent_mode="agent_loop",
+            auto_status=true,
+            prompt="Implement client layer: blockchain-config, wallet, preflight, htlc lib, UI for $input.network_id.\n\nFollow design_client.md. Commit. On repair: sh scripts/validate-build.sh.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+        implement_mocknet [
+            shape=box,
+            class="hard",
+            max_agent_turns=200,
+            agent_mode="agent_loop",
+            auto_status=true,
+            prompt="Implement mocknet/bootstrap scripts and env examples for $input.network_id per design_mocknet.md. Commit.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+        implement_tests_skills [
+            shape=box,
+            class="hard",
+            max_agent_turns=200,
+            agent_mode="agent_loop",
+            auto_status=true,
+            prompt="Add unit/integration tests for new network paths. Add operator .claude/skills if chain has operator flows (see canton/solana skills). Update agents.md pointers.\n\nEnsure scripts/validate-build.sh, validate-test.sh, validate-fmt.sh exist and are POSIX sh.\n\nCommit.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure."
+        ]
+    }
+
+    subgraph cluster_verify {
+        label="Verify"
+        verify_fmt [
+            shape=parallelogram,
+            tool_command="sh scripts/validate-fmt.sh || { echo 'KILROY_VALIDATE_FAILURE: validate-fmt.sh missing or failed'; exit 1; }"
+        ]
+        check_fmt [shape=diamond, label="Fmt OK?"]
+
+        verify_build [
+            shape=parallelogram,
+            tool_command="sh scripts/validate-build.sh || { echo 'KILROY_VALIDATE_FAILURE: validate-build.sh missing or failed'; exit 1; }"
+        ]
+        check_build [shape=diamond, label="Build OK?"]
+
+        verify_test [
+            shape=parallelogram,
+            tool_command="sh scripts/validate-test.sh || { echo 'KILROY_VALIDATE_FAILURE: validate-test.sh missing or failed'; exit 1; }"
+        ]
+        check_test [shape=diamond, label="Tests OK?"]
+
+        verify_artifacts [
+            shape=parallelogram,
+            tool_command="test -f .ai/runs/$KILROY_RUN_ID/test-evidence/latest/manifest.json || { echo 'KILROY_VALIDATE_FAILURE: missing test evidence manifest'; exit 1; }"
+        ]
+        check_artifacts [shape=diamond, label="Artifacts OK?"]
+
+        verify_fidelity [
+            shape=box,
+            class="verify",
+            prompt="Read .ai/runs/$KILROY_RUN_ID/definition_of_done.md and chain-checklist.md. Verify each AC by ID against implementation.\n\nWrite .ai/runs/$KILROY_RUN_ID/verify_fidelity.md.\n\nPass: {\"status\":\"success\"}. Fail: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_signature\":\"ac_verification_failed\",\"failure_class\":\"deterministic\"} to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+        ]
+        check_impl [shape=diamond, label="Impl OK?"]
+    }
+
+    postmortem [
+        shape=box,
+        auto_status=true,
+        prompt="Read verify_fidelity failure, test-evidence manifest, postmortem context key last_failing_acs.\n\nWrite .ai/runs/$KILROY_RUN_ID/postmortem_latest.md with routing recommendation.\n\nCompare failing AC set to last_failing_acs — if identical, route needs_replan.\n\nOutcomes via status: impl_repair, needs_replan, needs_toolchain. Write to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+    ]
+
+    route_postmortem [shape=diamond, label="Postmortem route?"]
+
+    // Bootstrap edges
+    start -> check_toolchain
+    check_toolchain -> expand_spec [label="success", condition="outcome=success"]
+    check_toolchain -> exit [label="fail", condition="outcome=fail"]
+    check_toolchain -> exit [label="fallback", condition="outcome!=success"]
+    expand_spec -> check_dod
+    check_dod -> analyze_fanout [label="has_dod", condition="outcome=has_dod"]
+    check_dod -> dod_fanout [label="needs_dod", condition="outcome=needs_dod"]
+    check_dod -> dod_fanout [label="fallback"]
+    dod_fanout -> dod_a
+    dod_fanout -> dod_b
+    dod_fanout -> dod_c
+    dod_a -> consolidate_dod
+    dod_b -> consolidate_dod
+    dod_c -> consolidate_dod
+    consolidate_dod -> analyze_fanout
+
+    // Analysis fanout
+    analyze_fanout -> analyze_shared
+    analyze_fanout -> analyze_backend
+    analyze_fanout -> analyze_client
+    analyze_fanout -> analyze_mocknet
+    analyze_shared -> merge_analysis
+    analyze_backend -> merge_analysis
+    analyze_client -> merge_analysis
+    analyze_mocknet -> merge_analysis
+    merge_analysis -> classify_chain_type
+
+    // Chain type routing
+    classify_chain_type -> route_chain_type
+    route_chain_type -> research_chain [label="unknown", condition="outcome=needs_research"]
+    route_chain_type -> plan_fanout [label="known type", condition="outcome=success"]
+    route_chain_type -> plan_fanout [label="fallback"]
+    research_chain -> plan_fanout
+
+    // Planning
+    plan_fanout -> plan_a
+    plan_fanout -> plan_b
+    plan_fanout -> plan_c
+    plan_a -> debate_consolidate
+    plan_b -> debate_consolidate
+    plan_c -> debate_consolidate
+    debate_consolidate -> plan_work
+
+    // Implement sequential by layer
+    plan_work -> implement_shared
+    implement_shared -> implement_backend
+    implement_backend -> implement_client
+    implement_client -> implement_mocknet
+    implement_mocknet -> implement_tests_skills
+    implement_tests_skills -> verify_fmt
+
+    // Verify chain
+    verify_fmt -> check_fmt
+    check_fmt -> verify_build [label="ok", condition="outcome=success"]
+    check_fmt -> postmortem [label="fail", condition="outcome=fail"]
+    check_fmt -> postmortem [label="fallback"]
+    verify_build -> check_build
+    check_build -> verify_test [label="ok", condition="outcome=success"]
+    check_build -> postmortem [label="fail", condition="outcome=fail"]
+    check_build -> postmortem [label="fallback"]
+    verify_test -> check_test
+    check_test -> verify_artifacts [label="ok", condition="outcome=success"]
+    check_test -> postmortem [label="fail", condition="outcome=fail"]
+    check_test -> postmortem [label="fallback"]
+    verify_artifacts -> check_artifacts
+    check_artifacts -> verify_fidelity [label="ok", condition="outcome=success"]
+    check_artifacts -> postmortem [label="fail", condition="outcome=fail"]
+    check_artifacts -> postmortem [label="fallback"]
+    verify_fidelity -> check_impl
+    check_impl -> exit [label="pass", condition="outcome=success"]
+    check_impl -> postmortem [label="fail", condition="outcome=fail"]
+    check_impl -> postmortem [label="fallback"]
+
+    // Postmortem routing
+    postmortem -> route_postmortem
+    route_postmortem -> implement_shared [label="impl_repair", condition="outcome=impl_repair"]
+    route_postmortem -> plan_fanout [label="needs_replan", condition="outcome=needs_replan"]
+    route_postmortem -> check_toolchain [label="needs_toolchain", condition="outcome=needs_toolchain"]
+    route_postmortem -> implement_shared [label="fallback"]
+}

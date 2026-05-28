@@ -102,10 +102,12 @@ func (h *TmuxAgentHandler) Execute(ctx context.Context, exec *engine.Execution, 
 			}, nil
 		}
 	}
+	promptPath := filepath.Join(stageDir, "prompt.md")
+	_ = os.WriteFile(promptPath, []byte(prompt), 0o644)
+	if flag := strings.TrimSpace(tmpl.PromptFileFlag); flag != "" {
+		command = command + " " + flag + " " + shellQuoteSimple(promptPath)
+	}
 	_ = os.WriteFile(filepath.Join(stageDir, "tmux_command.txt"), []byte(command), 0o644)
-
-	// Write prompt for debugging.
-	_ = os.WriteFile(filepath.Join(stageDir, "prompt.md"), []byte(prompt), 0o644)
 
 	// Emit progress event.
 	if exec.Engine != nil {

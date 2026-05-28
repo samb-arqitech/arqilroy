@@ -587,7 +587,7 @@ digraph G {
 	if err := cp.Save(cpPath); err != nil {
 		t.Fatalf("Save checkpoint: %v", err)
 	}
-	res2, err := Resume(ctx, res.LogsRoot)
+	res2, err := Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}

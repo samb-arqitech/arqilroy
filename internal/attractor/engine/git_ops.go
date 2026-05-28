@@ -23,6 +23,9 @@ type GitOps interface {
 	// HeadSHA returns the current HEAD commit identifier for a directory.
 	HeadSHA(dir string) (string, error)
 
+	// ResolveRef resolves a git ref (branch, tag, SHA) to a commit SHA in dir.
+	ResolveRef(dir, ref string) (string, error)
+
 	// SetupRunWorkspace creates a branch and worktree for the run.
 	// repoPath is the source repository, worktreeDir is the target path,
 	// runBranch is the branch name to create, baseSHA is the starting commit.

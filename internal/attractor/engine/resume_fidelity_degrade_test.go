@@ -84,7 +84,7 @@ digraph G {
 	// to use full fidelity again.
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel2()
-	if _, err := Resume(ctx2, res.LogsRoot); err != nil {
+	if _, err := Resume(ctx2, res.LogsRoot, ResumeOverrides{}); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 

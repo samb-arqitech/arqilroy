@@ -43,6 +43,7 @@ type ResumeOverrides struct {
 	CXDBHTTPBaseURL string
 	CXDBContextID   string
 	GitOps          GitOps
+	Registry        *HandlerRegistry
 }
 
 // Resume continues an existing run from {logs_root}/checkpoint.json.
@@ -51,8 +52,8 @@ type ResumeOverrides struct {
 // - filesystem checkpoint.json (execution state)
 // - stage status.json for last completed node (routing outcome)
 // - git commit SHA from checkpoint (code state)
-func Resume(ctx context.Context, logsRoot string) (*Result, error) {
-	return resumeFromLogsRoot(ctx, logsRoot, ResumeOverrides{})
+func Resume(ctx context.Context, logsRoot string, ov ResumeOverrides) (*Result, error) {
+	return resumeFromLogsRoot(ctx, logsRoot, ov)
 }
 
 func resumeFromLogsRoot(ctx context.Context, logsRoot string, ov ResumeOverrides) (res *Result, err error) {
@@ -239,6 +240,9 @@ func resumeFromLogsRoot(ctx context.Context, logsRoot string, ov ResumeOverrides
 		return nil, err
 	}
 	eng = newBaseEngine(g, dotSource, opts)
+	if ov.Registry != nil {
+		eng.Registry = ov.Registry
+	}
 	eng.RunConfig = cfg
 	eng.ArtifactPolicy = resolvedArtifactPolicy
 	eng.AgentBackend = backend
