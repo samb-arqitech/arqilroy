@@ -338,7 +338,7 @@ func resolveToolName(node *model.Node) string {
 	// Check llm_provider for provider-based routing.
 	if provider := strings.TrimSpace(node.Attr("llm_provider", "")); provider != "" {
 		switch strings.ToLower(provider) {
-		case "anthropic", "openai", "google", "gemini":
+		case "cursor", "anthropic", "openai", "google", "gemini":
 			return "cursor"
 		}
 	}

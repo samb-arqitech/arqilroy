@@ -4,10 +4,26 @@ import "testing"
 
 func TestBuiltinSpecsIncludeCoreAndNewProviders(t *testing.T) {
 	s := Builtins()
-	for _, key := range []string{"openai", "codex-app-server", "anthropic", "google", "kimi", "zai", "cerebras", "minimax", "inception"} {
+	for _, key := range []string{"cursor", "openai", "codex-app-server", "anthropic", "google", "kimi", "zai", "cerebras", "minimax", "inception"} {
 		if _, ok := s[key]; !ok {
 			t.Fatalf("missing builtin provider %q", key)
 		}
+	}
+}
+
+func TestBuiltinCursorDefaultsToCursorCLIOnly(t *testing.T) {
+	spec, ok := Builtin("cursor")
+	if !ok {
+		t.Fatalf("expected cursor builtin")
+	}
+	if spec.API != nil {
+		t.Fatalf("cursor should not expose an api provider spec")
+	}
+	if spec.CLI == nil {
+		t.Fatalf("expected cursor cli spec")
+	}
+	if got := spec.CLI.DefaultExecutable; got != "kilroy-cursor-agent" {
+		t.Fatalf("cursor default executable: got %q want %q", got, "kilroy-cursor-agent")
 	}
 }
 

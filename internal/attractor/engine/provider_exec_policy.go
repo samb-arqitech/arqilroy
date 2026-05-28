@@ -139,7 +139,7 @@ func providerDefaultExecutable(provider string) (exe string, envKey string, ok b
 
 func usesCursorAgentCLI(provider string) bool {
 	switch normalizeProviderKey(provider) {
-	case "openai", "anthropic", "google":
+	case "cursor", "openai", "anthropic", "google":
 		return true
 	default:
 		return false

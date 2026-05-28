@@ -1,6 +1,10 @@
 package providerspec
 
 var builtinSpecs = map[string]Spec{
+	"cursor": {
+		Key: "cursor",
+		CLI: cursorCLISpec(),
+	},
 	"openai": {
 		Key: "openai",
 		API: &APISpec{

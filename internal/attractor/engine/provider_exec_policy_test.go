@@ -29,12 +29,13 @@ func TestResolveProviderExecutable_RealReturnsCanonicalDefaults(t *testing.T) {
 	cfg := &RunConfigFile{}
 	cfg.LLM.CLIProfile = "real"
 	cfg.LLM.Providers = map[string]ProviderConfig{
+		"cursor":    {Backend: BackendCLI},
 		"openai":    {Backend: BackendCLI},
 		"anthropic": {Backend: BackendCLI},
 		"google":    {Backend: BackendCLI},
 	}
 
-	for _, provider := range []string{"openai", "anthropic", "google"} {
+	for _, provider := range []string{"cursor", "openai", "anthropic", "google"} {
 		t.Run(provider, func(t *testing.T) {
 			got, err := ResolveProviderExecutable(cfg, provider, RunOptions{})
 			if err != nil {

@@ -87,6 +87,20 @@ func TestRunWithConfig_RejectsTestShimWithoutAllowFlag(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_AcceptsLegacyCursorCLIProvider(t *testing.T) {
+	cfg := &RunConfigFile{}
+	cfg.Version = 1
+	cfg.Repo.Path = "/tmp/repo"
+	cfg.LLM.CLIProfile = "real"
+	cfg.LLM.Providers = map[string]ProviderConfig{
+		"cursor": {Backend: BackendCLI},
+	}
+
+	if err := validateConfig(cfg); err != nil {
+		t.Fatalf("validateConfig rejected legacy cursor cli provider: %v", err)
+	}
+}
+
 func TestRunWithConfig_DoesNotRequireAllowTestShim_ForAPIOnlyProviders(t *testing.T) {
 	repo := initTestRepo(t)
 	cfg := &RunConfigFile{}
