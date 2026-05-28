@@ -470,33 +470,33 @@ func TestRunWithConfig_PreflightFails_WhenProviderCLIBinaryMissing(t *testing.T)
 	}
 }
 
-func TestRunWithConfig_PreflightFails_WhenAnthropicCapabilityMissingVerbose(t *testing.T) {
+func TestRunWithConfig_PreflightFails_WhenCursorAgentCapabilityMissingStreamJSON(t *testing.T) {
 	repo := initTestRepo(t)
 	catalog := writeCatalogForPreflight(t, `{
   "data": [
     {"id": "anthropic/claude-sonnet-4-20250514"}
   ]
 }`)
-	claudeCLI := writeFakeCLI(t, "claude", "Usage: claude -p --output-format stream-json --model MODEL", 0)
+	cursorCLI := writeFakeCLI(t, "kilroy-cursor-agent", "Usage: kilroy-cursor-agent run --model MODEL", 0)
 
 	cfg := testPreflightConfigForProviders(repo, catalog, map[string]BackendKind{
 		"anthropic": BackendCLI,
 	})
-	cfg.LLM.Providers["anthropic"] = ProviderConfig{Backend: BackendCLI, Executable: claudeCLI}
+	cfg.LLM.Providers["anthropic"] = ProviderConfig{Backend: BackendCLI, Executable: cursorCLI}
 	dot := singleProviderDot("anthropic", "claude-sonnet-4-20250514")
 
 	logsRoot := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := RunWithConfig(ctx, dot, cfg, RunOptions{RunID: "preflight-anthropic-verbose", LogsRoot: logsRoot, AllowTestShim: true})
+	_, err := RunWithConfig(ctx, dot, cfg, RunOptions{RunID: "preflight-cursor-stream-json", LogsRoot: logsRoot, AllowTestShim: true})
 	if err == nil {
-		t.Fatalf("expected anthropic capability error, got nil")
+		t.Fatalf("expected cursor-agent capability error, got nil")
 	}
 	if !strings.Contains(err.Error(), "preflight: provider anthropic capability probe missing required tokens") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "--verbose") {
-		t.Fatalf("expected missing --verbose token in error, got %v", err)
+	if !strings.Contains(err.Error(), "--stream-json") {
+		t.Fatalf("expected missing --stream-json token in error, got %v", err)
 	}
 	report := mustReadPreflightReport(t, logsRoot)
 	if report.Summary.Fail == 0 {
@@ -1705,7 +1705,8 @@ digraph G {
   start [shape=Mdiamond]
   a [shape=box, llm_provider="%s", llm_model="%s", prompt="x"]
   exit [shape=Msquare]
-  start -> a -> exit
+  start -> a
+  a -> exit [condition="outcome=success"]
 }
 `, provider, modelID))
 }
@@ -1747,19 +1748,43 @@ func writeCatalogForPreflight(t *testing.T, content string) string {
 	return p
 }
 
+const fakeCursorAgentHelpUsage = `Usage: kilroy-cursor-agent run --cwd <dir> --model <id> [--stream-json]
+       kilroy-cursor-agent --help
+`
+
 func writeFakeCLI(t *testing.T, name string, helpOutput string, helpExit int) string {
 	t.Helper()
+	if strings.TrimSpace(helpOutput) == "" {
+		helpOutput = fakeCursorAgentHelpUsage
+	}
 	p := filepath.Join(t.TempDir(), name)
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "exec" && "${2:-}" == "--help" ]]; then
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+cat <<'EOF'
+%s
+EOF
+exit %d
+fi
+if [[ "${1:-}" == "run" ]]; then
+cat <<'JSON'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}
+JSON
+if [[ -n "${KILROY_STAGE_STATUS_PATH:-}" ]]; then
+  echo '{"status":"success","notes":"ok"}' > "${KILROY_STAGE_STATUS_PATH}"
+elif [[ -f status.json ]]; then
+  echo '{"status":"success","notes":"ok"}' > status.json
+fi
+exit 0
+fi
+if [[ "${1:-}" == "exec" && "${2:-}" == "--help" ]]; then
 cat <<'EOF'
 %s
 EOF
 exit %d
 fi
 echo "ok"
-`, helpOutput, helpExit)
+`, helpOutput, helpExit, helpOutput, helpExit)
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake cli: %v", err)
 	}

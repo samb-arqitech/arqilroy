@@ -71,7 +71,7 @@ This implementation is based on the Attractor specification by StrongDM at `http
 - Clean working tree before `attractor run`/`resume`
 - CXDB reachable over binary + HTTP endpoints (or configure `cxdb.autostart`)
 - Provider access for any provider used in your graph
-- `claude` CLI for `attractor ingest` (or set `KILROY_CLAUDE_PATH`)
+- `CURSOR_API_KEY` and Node.js 20+ for CLI backends and `attractor ingest` (via `@cursor/sdk` bridge; override with `KILROY_CURSOR_AGENT_PATH`)
 
 ## Quickstart
 
@@ -205,7 +205,7 @@ Important:
 Real run (recommended/default profile):
 
 ```bash
-unset KILROY_CODEX_PATH KILROY_CLAUDE_PATH KILROY_GEMINI_PATH
+unset KILROY_CURSOR_AGENT_PATH KILROY_CODEX_PATH KILROY_CLAUDE_PATH KILROY_GEMINI_PATH
 ./kilroy attractor run --graph pipeline.dot --config run.yaml
 ```
 
@@ -291,16 +291,17 @@ Provider runtime architecture:
 - `kimi`, `zai`, `cerebras`, and `minimax` are API-only in this release.
 - `profile_family` selects agent behavior/tooling profile only; API requests still route by `llm_provider` (native provider key).
 
-CLI backend command mappings:
+CLI backend (Cursor TypeScript SDK):
 
-- `openai` -> `codex exec --json --sandbox workspace-write ...`
-- `anthropic` -> `claude -p --output-format stream-json ...`
-- `google` -> `gemini -p --output-format stream-json --yolo ...`
+- `openai`, `anthropic`, and `google` CLI backends invoke `kilroy-cursor-agent`, a headless bridge around [`@cursor/sdk`](https://cursor.com/docs/sdk/typescript).
+- Requires `CURSOR_API_KEY` and Node.js 20+. Build the bridge once: `npm install && npm run build --prefix scripts/cursor-agent`.
+- Invocation shape: `kilroy-cursor-agent run --cwd <worktree> --model <cursor-model> --stream-json` (prompt on stdin).
+- Legacy graph model IDs (for example `claude-sonnet-4-6`, `gemini-3-flash-preview`) are mapped to Cursor SDK models (for example `composer-2.5`, `composer-2-fast`).
 
 Execution policy:
 
 - `llm.cli_profile` defaults to `real`.
-- In `real`, Kilroy uses canonical binaries (`codex`, `claude`, `gemini`) and rejects `KILROY_CODEX_PATH`, `KILROY_CLAUDE_PATH`, `KILROY_GEMINI_PATH`.
+- In `real`, Kilroy resolves the bundled `scripts/kilroy-cursor-agent` wrapper and rejects `KILROY_CURSOR_AGENT_PATH`, `KILROY_CODEX_PATH`, `KILROY_CLAUDE_PATH`, and `KILROY_GEMINI_PATH`.
 - For fake/shim binaries, set `llm.cli_profile: test_shim`, configure `llm.providers.<provider>.executable`, and run with `--allow-test-shim`.
 
 API backend environment variables:

@@ -66,17 +66,16 @@ func classifyProviderCLIError(provider string, stderr string, runErr error) prov
 		}
 	}
 
-	if providerKey == "anthropic" &&
-		strings.Contains(combined, "stream-json") &&
-		strings.Contains(combined, "verbose") {
+	if strings.Contains(combined, "cursor_api_key is required") ||
+		strings.Contains(combined, "CURSOR_API_KEY is required") {
 		return providerCLIClassifiedError{
 			FailureClass:     failureClassDeterministic,
-			FailureSignature: "provider_contract|anthropic|stream_json_requires_verbose",
-			FailureReason:    "anthropic stream-json contract requires --verbose",
+			FailureSignature: "provider_credentials|cursor|missing_api_key",
+			FailureReason:    "CURSOR_API_KEY is required for cursor sdk cli backends",
 		}
 	}
 
-	if providerKey == "google" && isGoogleModelNotFound(combined) {
+	if providerKey == "google" && !usesCursorAgentCLI(providerKey) && isGoogleModelNotFound(combined) {
 		return providerCLIClassifiedError{
 			FailureClass:     failureClassDeterministic,
 			FailureSignature: "provider_model_unavailable|google|model_not_found",

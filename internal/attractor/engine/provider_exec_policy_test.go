@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveProviderExecutable_RealRejectsEnvOverrides(t *testing.T) {
-	t.Setenv("KILROY_CODEX_PATH", "/tmp/fake/codex")
+	t.Setenv("KILROY_CURSOR_AGENT_PATH", "/tmp/fake/kilroy-cursor-agent")
 
 	cfg := &RunConfigFile{}
 	cfg.LLM.CLIProfile = "real"
@@ -20,7 +20,7 @@ func TestResolveProviderExecutable_RealRejectsEnvOverrides(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when env override is present in real profile")
 	}
-	if !strings.Contains(err.Error(), "KILROY_CODEX_PATH") {
+	if !strings.Contains(err.Error(), "KILROY_CURSOR_AGENT_PATH") {
 		t.Fatalf("expected env key in error, got %v", err)
 	}
 }
@@ -34,23 +34,14 @@ func TestResolveProviderExecutable_RealReturnsCanonicalDefaults(t *testing.T) {
 		"google":    {Backend: BackendCLI},
 	}
 
-	tests := []struct {
-		provider string
-		wantExe  string
-	}{
-		{provider: "openai", wantExe: "codex"},
-		{provider: "anthropic", wantExe: "claude"},
-		{provider: "google", wantExe: "gemini"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.provider, func(t *testing.T) {
-			got, err := ResolveProviderExecutable(cfg, tc.provider, RunOptions{})
+	for _, provider := range []string{"openai", "anthropic", "google"} {
+		t.Run(provider, func(t *testing.T) {
+			got, err := ResolveProviderExecutable(cfg, provider, RunOptions{})
 			if err != nil {
 				t.Fatalf("ResolveProviderExecutable: %v", err)
 			}
-			if got != tc.wantExe {
-				t.Fatalf("executable=%q want %q", got, tc.wantExe)
+			if !strings.Contains(got, "kilroy-cursor-agent") {
+				t.Fatalf("executable=%q want path containing kilroy-cursor-agent", got)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/danshapiro/kilroy/internal/attractor/engine"
+	"github.com/danshapiro/kilroy/internal/cursoragent"
 )
 
 //go:embed ingest_prompt.tmpl
@@ -26,9 +27,9 @@ type Options struct {
 	Requirements string // The English requirements text.
 	SkillPath    string // Path to the SKILL.md file.
 	Model        string // LLM model ID.
-	RepoPath     string // Repository root (working directory for claude).
+	RepoPath     string // Repository root (add-dir / context for the agent).
 	Validate     bool   // Whether to validate the .dot output.
-	MaxTurns     int    // Max turns for claude (default 15).
+	MaxTurns     int    // Reserved; Cursor SDK manages turn budget internally.
 }
 
 // Result contains the output of an ingestion run.
@@ -76,53 +77,51 @@ func inferSkillName(skillPath string) string {
 }
 
 func buildCLIArgs(opts Options) (string, []string, string, error) {
-	exe := envOr("KILROY_CLAUDE_PATH", "claude")
-	maxTurns := opts.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = 15
-	}
+	exe := envOr(cursoragent.EnvPath, cursoragent.ResolveExecutable())
 
+	model := cursoragent.ToCursorModelID("anthropic", opts.Model)
 	args := []string{
-		"--model", opts.Model,
-		"--max-turns", fmt.Sprintf("%d", maxTurns),
-		"--dangerously-skip-permissions",
+		"run",
+		"--model", model,
+		"--interactive",
 	}
 
-	// Give Claude read access to the repo without running inside it.
-	// Resolve to absolute because Claude runs from a temp dir.
-	if opts.RepoPath != "" {
-		absRepo, err := filepath.Abs(opts.RepoPath)
-		if err != nil {
-			return "", nil, "", fmt.Errorf("resolving repo path: %w", err)
-		}
-		args = append(args, "--add-dir", absRepo)
+	// Create a temp working directory so the agent writes pipeline.dot here.
+	tmpDir, err := os.MkdirTemp("", "kilroy-ingest-*")
+	if err != nil {
+		return "", nil, "", fmt.Errorf("creating temp directory: %w", err)
 	}
+	args = append(args, "--cwd", tmpDir)
 
+	var systemParts []string
 	if opts.SkillPath != "" {
 		skillContent, err := os.ReadFile(opts.SkillPath)
 		if err != nil {
 			return "", nil, "", fmt.Errorf("reading skill file: %w", err)
 		}
 		if len(skillContent) > 0 {
-			args = append(args, "--append-system-prompt", string(skillContent))
+			systemParts = append(systemParts, string(skillContent))
 		}
 	}
-
-	// Create a temp working directory so Claude writes pipeline.dot here.
-	tmpDir, err := os.MkdirTemp("", "kilroy-ingest-*")
-	if err != nil {
-		return "", nil, "", fmt.Errorf("creating temp directory: %w", err)
+	if opts.RepoPath != "" {
+		absRepo, err := filepath.Abs(opts.RepoPath)
+		if err != nil {
+			return "", nil, "", fmt.Errorf("resolving repo path: %w", err)
+		}
+		systemParts = append(systemParts, fmt.Sprintf("Additional repository context is available at: %s", absRepo))
+	}
+	if len(systemParts) > 0 {
+		args = append(args, "--append-system-prompt", strings.Join(systemParts, "\n\n"))
 	}
 
-	// The prompt is appended last as a positional argument.
-	args = append(args, buildPrompt(opts.Requirements, inferSkillName(opts.SkillPath)))
+	_ = opts.MaxTurns
 
 	return exe, args, tmpDir, nil
 }
 
-// Run executes the ingestion: invokes Claude Code interactively with the skill
-// and requirements. Claude writes the .dot file to pipeline.dot in its working
-// directory, which is read back after the session ends.
+// Run executes the ingestion: invokes the Cursor SDK agent bridge with the skill
+// and requirements. The agent writes pipeline.dot in its working directory,
+// which is read back after the session ends.
 func Run(ctx context.Context, opts Options) (*Result, error) {
 	// Verify skill file exists.
 	if _, err := os.Stat(opts.SkillPath); err != nil {
@@ -135,21 +134,21 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	prompt := buildPrompt(opts.Requirements, inferSkillName(opts.SkillPath))
 	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Dir = tmpDir
-	cmd.Stdin = os.Stdin
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err = cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude exited with error: %v", err)
+		return nil, fmt.Errorf("cursor agent exited with error: %v", err)
 	}
 
-	// Read the .dot file Claude wrote.
 	dotPath := filepath.Join(tmpDir, outputFilename)
 	dotBytes, err := os.ReadFile(dotPath)
 	if err != nil {
-		return nil, fmt.Errorf("claude did not write %s: %w", outputFilename, err)
+		return nil, fmt.Errorf("cursor agent did not write %s: %w", outputFilename, err)
 	}
 
 	dotContent := strings.TrimSpace(string(dotBytes))

@@ -9,6 +9,7 @@ type Registry struct {
 // DefaultRegistry returns a registry with all built-in tool templates.
 func DefaultRegistry() *Registry {
 	r := &Registry{templates: map[string]Template{}}
+	r.Register(Cursor())
 	r.Register(Claude())
 	r.Register(Codex())
 	r.Register(Gemini())

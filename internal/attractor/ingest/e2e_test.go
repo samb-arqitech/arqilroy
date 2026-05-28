@@ -20,8 +20,8 @@ func TestRunWithMockClaude(t *testing.T) {
 
 	// Create a mock claude script that copies the .dot file to pipeline.dot in CWD.
 	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "claude")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\ncp '"+dotPath+"' ./pipeline.dot\n"), 0o755)
+	mockScript := filepath.Join(tmpDir, "kilroy-cursor-agent")
+	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nif [ \"$1\" = run ]; then cp '"+dotPath+"' ./pipeline.dot; exit 0; fi\nexit 1\n"), 0o755)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +33,7 @@ func TestRunWithMockClaude(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Point KILROY_CLAUDE_PATH at the mock.
-	t.Setenv("KILROY_CLAUDE_PATH", mockScript)
+	t.Setenv("KILROY_CURSOR_AGENT_PATH", mockScript)
 
 	result, err := Run(context.Background(), Options{
 		Requirements: "solitaire plz",
@@ -84,8 +83,8 @@ func TestRunWithMockClaudeWrappedOutput(t *testing.T) {
 
 	// Create a mock that writes the dot content to pipeline.dot.
 	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "claude")
-	err = os.WriteFile(mockScript, []byte("#!/bin/sh\ncp '"+dotPath+"' ./pipeline.dot\n"), 0o755)
+	mockScript := filepath.Join(tmpDir, "kilroy-cursor-agent")
+	err = os.WriteFile(mockScript, []byte("#!/bin/sh\nif [ \"$1\" = run ]; then cp '"+dotPath+"' ./pipeline.dot; exit 0; fi\nexit 1\n"), 0o755)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +95,7 @@ func TestRunWithMockClaudeWrappedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("KILROY_CLAUDE_PATH", mockScript)
+	t.Setenv("KILROY_CURSOR_AGENT_PATH", mockScript)
 
 	result, err := Run(context.Background(), Options{
 		Requirements: "Build a link checker CLI",
@@ -123,8 +122,8 @@ func TestRunWithMockClaudeWrappedOutput(t *testing.T) {
 func TestRunWithMockClaudeFailure(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	mockScript := filepath.Join(tmpDir, "claude")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\necho 'API error' >&2\nexit 1\n"), 0o755)
+	mockScript := filepath.Join(tmpDir, "kilroy-cursor-agent")
+	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nif [ \"$1\" = run ]; then echo 'API error' >&2; exit 1; fi\nexit 1\n"), 0o755)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +134,7 @@ func TestRunWithMockClaudeFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("KILROY_CLAUDE_PATH", mockScript)
+	t.Setenv("KILROY_CURSOR_AGENT_PATH", mockScript)
 
 	_, err = Run(context.Background(), Options{
 		Requirements: "Build something",
@@ -153,8 +152,8 @@ func TestRunWithMockClaudeFailure(t *testing.T) {
 func TestRunWithMockClaudeNoPipelineDot(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	mockScript := filepath.Join(tmpDir, "claude")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	mockScript := filepath.Join(tmpDir, "kilroy-cursor-agent")
+	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nif [ \"$1\" = run ]; then exit 0; fi\nexit 1\n"), 0o755)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +164,7 @@ func TestRunWithMockClaudeNoPipelineDot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("KILROY_CLAUDE_PATH", mockScript)
+	t.Setenv("KILROY_CURSOR_AGENT_PATH", mockScript)
 
 	_, err = Run(context.Background(), Options{
 		Requirements: "Build something",

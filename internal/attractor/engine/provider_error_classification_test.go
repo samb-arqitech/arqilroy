@@ -11,32 +11,34 @@ import (
 	"github.com/danshapiro/kilroy/internal/providerspec"
 )
 
-func TestClassifyProviderCLIError_AnthropicStreamJSONRequiresVerbose(t *testing.T) {
+func TestClassifyProviderCLIError_CursorAgentMissingAPIKey(t *testing.T) {
 	got := classifyProviderCLIError(
 		"anthropic",
-		"error: --output-format stream-json requires --verbose",
+		"kilroy-cursor-agent: CURSOR_API_KEY is required",
 		errors.New("exit status 2"),
 	)
 
 	if got.FailureClass != failureClassDeterministic {
 		t.Fatalf("FailureClass: got %q want %q", got.FailureClass, failureClassDeterministic)
 	}
-	if !strings.HasPrefix(got.FailureSignature, "provider_contract|anthropic|") {
+	if !strings.HasPrefix(got.FailureSignature, "provider_credentials|cursor|") {
 		t.Fatalf("FailureSignature: got %q", got.FailureSignature)
 	}
 }
 
-func TestClassifyProviderCLIError_GeminiModelNotFound(t *testing.T) {
+func TestClassifyProviderCLIError_GoogleUsesGenericClassificationWithCursorAgent(t *testing.T) {
 	got := classifyProviderCLIError(
 		"google",
 		"Error: model gemini-3.1-pro-preview was not found",
 		errors.New("exit status 1"),
 	)
 
+	// Builtin google CLI backends route through cursor-agent; legacy gemini stderr
+	// heuristics are not applied.
 	if got.FailureClass != failureClassDeterministic {
 		t.Fatalf("FailureClass: got %q want %q", got.FailureClass, failureClassDeterministic)
 	}
-	if !strings.HasPrefix(got.FailureSignature, "provider_model_unavailable|google|") {
+	if !strings.HasPrefix(got.FailureSignature, "provider_failure|google|") {
 		t.Fatalf("FailureSignature: got %q", got.FailureSignature)
 	}
 }

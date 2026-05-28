@@ -6,68 +6,46 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/danshapiro/kilroy/internal/cursoragent"
 )
 
-func TestDefaultCLIInvocation_GoogleGeminiNonInteractive(t *testing.T) {
-	exe, args := defaultCLIInvocation("google", "gemini-3-flash-preview", "/tmp/worktree")
-	if exe == "" {
-		t.Fatalf("expected non-empty executable for google")
-	}
-	if !hasArg(args, "-p") {
-		t.Fatalf("expected -p in args (headless prompt mode); args=%v", args)
-	}
-	// Spec/metaspec: CLI adapters must not block on interactive approvals.
-	if !hasArg(args, "--yolo") {
-		t.Fatalf("expected --yolo in args to force non-interactive approvals; args=%v", args)
-	}
-	// Ensure we pass the model explicitly.
-	foundModel := false
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "--model" && args[i+1] == "gemini-3-flash-preview" {
-			foundModel = true
-			break
-		}
-	}
-	if !foundModel {
-		t.Fatalf("expected --model gemini-3-flash-preview in args; args=%v", args)
-	}
-}
-
-func TestDefaultCLIInvocation_AnthropicNormalizesDotsToHyphens(t *testing.T) {
-	exe, args := defaultCLIInvocation("anthropic", "claude-sonnet-4.5", "/tmp/worktree")
-	if exe == "" {
-		t.Fatalf("expected non-empty executable for anthropic")
-	}
-	// The Claude CLI expects dashes in version numbers (claude-sonnet-4-5),
-	// but the OpenRouter catalog uses dots (claude-sonnet-4.5).
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "--model" {
-			if args[i+1] != "claude-sonnet-4-5" {
-				t.Fatalf("expected --model claude-sonnet-4-5 but got %s", args[i+1])
+func TestDefaultCLIInvocation_CursorAgentContract(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic", "google"} {
+		t.Run(provider, func(t *testing.T) {
+			exe, args := defaultCLIInvocation(provider, "claude-sonnet-4.5", "/tmp/worktree")
+			if exe == "" {
+				t.Fatalf("expected non-empty executable for %s", provider)
 			}
-			return
-		}
+			if !strings.Contains(exe, "kilroy-cursor-agent") {
+				t.Fatalf("executable=%q want kilroy-cursor-agent wrapper", exe)
+			}
+			if !hasArg(args, "run") {
+				t.Fatalf("expected run subcommand; args=%v", args)
+			}
+			if !hasArg(args, "--stream-json") {
+				t.Fatalf("expected --stream-json; args=%v", args)
+			}
+			if !hasArg(args, "--cwd") {
+				t.Fatalf("expected --cwd; args=%v", args)
+			}
+		})
 	}
-	t.Fatalf("--model flag not found in args: %v", args)
 }
 
-func TestDefaultCLIInvocation_StripsProviderPrefixFromModelID(t *testing.T) {
-	// Model IDs from .dot stylesheets use OpenRouter format (provider/model).
-	// CLI binaries expect the bare model name without the provider prefix.
+func TestDefaultCLIInvocation_MapsLegacyModelsToCursorSDK(t *testing.T) {
 	tests := []struct {
-		name      string
 		provider  string
 		modelID   string
 		wantModel string
 	}{
-		{"anthropic with prefix and dots", "anthropic", "anthropic/claude-sonnet-4.5", "claude-sonnet-4-5"},
-		{"anthropic with prefix no dots", "anthropic", "anthropic/claude-sonnet-4", "claude-sonnet-4"},
-		{"anthropic without prefix", "anthropic", "claude-sonnet-4.5", "claude-sonnet-4-5"},
-		{"google with prefix", "google", "google/gemini-3-flash-preview", "gemini-3-flash-preview"},
-		{"google without prefix", "google", "gemini-3-flash-preview", "gemini-3-flash-preview"},
+		{"anthropic", "anthropic/claude-sonnet-4.5", cursoragent.DefaultModel},
+		{"anthropic", "claude-haiku-4-5", "composer-2-fast"},
+		{"google", "google/gemini-3-flash-preview", "composer-2-fast"},
+		{"openai", "gpt-5.4", "gpt-5.4"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.provider+"_"+tt.modelID, func(t *testing.T) {
 			_, args := defaultCLIInvocation(tt.provider, tt.modelID, "/tmp/worktree")
 			for i := 0; i < len(args)-1; i++ {
 				if args[i] == "--model" {
@@ -79,42 +57,6 @@ func TestDefaultCLIInvocation_StripsProviderPrefixFromModelID(t *testing.T) {
 			}
 			t.Fatalf("--model flag not found in args: %v", args)
 		})
-	}
-}
-
-func TestDefaultCLIInvocation_AnthropicIncludesVerboseForStreamJSON(t *testing.T) {
-	exe, args := defaultCLIInvocation("anthropic", "claude-sonnet-4", "/tmp/worktree")
-	if exe == "" {
-		t.Fatalf("expected non-empty executable for anthropic")
-	}
-	if !hasArg(args, "--output-format") {
-		t.Fatalf("expected --output-format in args; args=%v", args)
-	}
-	if !hasArg(args, "stream-json") {
-		t.Fatalf("expected stream-json output format; args=%v", args)
-	}
-	if !hasArg(args, "--verbose") {
-		t.Fatalf("expected --verbose for stream-json contract compatibility; args=%v", args)
-	}
-}
-
-func TestDefaultCLIInvocation_AnthropicSkipsPermissions(t *testing.T) {
-	_, args := defaultCLIInvocation("anthropic", "claude-sonnet-4-5", "/tmp/worktree")
-	if !hasArg(args, "--dangerously-skip-permissions") {
-		t.Fatalf("expected --dangerously-skip-permissions for headless CLI mode; args=%v", args)
-	}
-}
-
-func TestDefaultCLIInvocation_OpenAI_DoesNotUseDeprecatedAskForApproval(t *testing.T) {
-	exe, args := defaultCLIInvocation("openai", "gpt-5.4", "/tmp/worktree")
-	if exe == "" {
-		t.Fatalf("expected non-empty executable for openai")
-	}
-	if hasArg(args, "--ask-for-approval") {
-		t.Fatalf("unexpected deprecated --ask-for-approval flag: %v", args)
-	}
-	if !hasArg(args, "--json") {
-		t.Fatalf("expected --json: %v", args)
 	}
 }
 

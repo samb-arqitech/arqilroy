@@ -326,20 +326,21 @@ func (h *TmuxAgentHandler) handleStartupDialog(session string, dialog templates.
 func resolveToolName(node *model.Node) string {
 	// Check explicit node attribute first.
 	if tool := strings.TrimSpace(node.Attr("agent_tool", "")); tool != "" {
-		return tool
+		switch strings.ToLower(tool) {
+		case "claude", "codex", "gemini", "opencode":
+			return "cursor"
+		default:
+			return tool
+		}
 	}
 	// Check llm_provider for provider-based routing.
 	if provider := strings.TrimSpace(node.Attr("llm_provider", "")); provider != "" {
 		switch strings.ToLower(provider) {
-		case "anthropic":
-			return "claude"
-		case "openai":
-			return "codex"
-		case "google", "gemini":
-			return "gemini"
+		case "anthropic", "openai", "google", "gemini":
+			return "cursor"
 		}
 	}
-	return "claude" // default
+	return "cursor"
 }
 
 // buildTmuxAgentEnv constructs the environment variables passed to a tmux-run

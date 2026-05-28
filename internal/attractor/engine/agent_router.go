@@ -1190,11 +1190,13 @@ func (r *AgentRouter) runCLI(ctx context.Context, execCtx *Execution, node *mode
 	actualArgs := args
 	recordedArgs := args
 	promptMode := "stdin"
-	switch normalizeProviderKey(provider) {
-	case "anthropic", "google":
-		promptMode = "arg"
-		actualArgs = insertPromptArg(args, prompt)
-		recordedArgs = insertPromptArg(args, "<prompt>")
+	if !usesCursorAgentCLI(provider) {
+		switch normalizeProviderKey(provider) {
+		case "anthropic", "google":
+			promptMode = "arg"
+			actualArgs = insertPromptArg(args, prompt)
+			recordedArgs = insertPromptArg(args, "<prompt>")
+		}
 	}
 
 	inv := map[string]any{
@@ -2188,6 +2190,9 @@ func emitCXDBToolTurns(ctx context.Context, eng *Engine, nodeID string, ev agent
 }
 
 func usesCodexCLISemantics(providerKey string, exe string) bool {
+	if usesCursorAgentCLI(providerKey) {
+		return false
+	}
 	if normalizeProviderKey(providerKey) == "openai" {
 		return true
 	}
@@ -2204,7 +2209,7 @@ func defaultCLIInvocation(provider string, modelID string, worktreeDir string) (
 	// by this provider's CLI binary: strip "provider/" prefix and (for
 	// anthropic) convert digit.digit version separators to digit-digit.
 	modelID = modelmeta.NativeModelID(normalizeProviderKey(provider), modelID)
-	exe, args = materializeCLIInvocation(*spec, modelID, worktreeDir, "")
+	exe, args = materializeCLIInvocationForProvider(normalizeProviderKey(provider), *spec, modelID, worktreeDir, "")
 	return exe, args
 }
 

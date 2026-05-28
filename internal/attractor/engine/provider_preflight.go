@@ -15,6 +15,7 @@ import (
 	"github.com/danshapiro/kilroy/internal/attractor/model"
 	"github.com/danshapiro/kilroy/internal/attractor/modeldb"
 	"github.com/danshapiro/kilroy/internal/attractor/runtime"
+	"github.com/danshapiro/kilroy/internal/cursoragent"
 	"github.com/danshapiro/kilroy/internal/llm"
 	"github.com/danshapiro/kilroy/internal/providerspec"
 )
@@ -923,6 +924,21 @@ func runProviderCLIPromptProbePreflight(ctx context.Context, provider string, mo
 		return nil
 	}
 
+	if usesCursorAgentCLI(provider) &&
+		strings.TrimSpace(os.Getenv("CURSOR_API_KEY")) == "" &&
+		normalizedCLIProfile(cfg) != "test_shim" {
+		report.addCheck(providerPreflightCheck{
+			Name:     "provider_cli_credentials",
+			Provider: provider,
+			Status:   preflightStatusFail,
+			Message:  "CURSOR_API_KEY is required for cursor sdk cli backends (set in environment before run)",
+			Details: map[string]any{
+				"backend": "cli",
+			},
+		})
+		return fmt.Errorf("preflight: provider %s requires CURSOR_API_KEY", provider)
+	}
+
 	// Codex CLI supports two auth modes: API key (OPENAI_API_KEY) and browser-based
 	// "chatgpt" auth (session tokens stored in ~/.codex/). The prompt probe runs in
 	// an isolated environment where browser auth tokens are unavailable. When no API
@@ -1502,12 +1518,15 @@ func usedModelsForProviderBackend(g *model.Graph, runtimes map[string]ProviderRu
 }
 
 func runProviderModelAccessProbe(ctx context.Context, provider string, exePath string, modelID string) (string, error) {
-	if normalizeProviderKey(provider) != "google" {
+	if usesCursorAgentCLI(provider) || normalizeProviderKey(provider) != "google" {
 		return "", nil
 	}
-	args := []string{"-p", "--output-format", "stream-json", "--yolo", "--model", modelID}
-	args = insertPromptArg(args, preflightPromptProbeText)
-	return runProviderProbe(ctx, exePath, args, 12*time.Second)
+	modelID = cursoragent.ToCursorModelID(provider, modelID)
+	args := []string{"run", "--cwd", ".", "--model", modelID, "--stream-json"}
+	return runProviderProbeWithOptions(ctx, exePath, args, 12*time.Second, providerProbeOptions{
+		Stdin: preflightPromptProbeText,
+		Dir:   ".",
+	})
 }
 
 func runProviderCapabilityProbe(ctx context.Context, provider string, exePath string) (string, error) {
