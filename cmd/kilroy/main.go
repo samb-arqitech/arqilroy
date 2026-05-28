@@ -1071,7 +1071,9 @@ func attractorResume(args []string) {
 	)
 	switch {
 	case logsRoot != "":
-		res, err = engine.Resume(ctx, logsRoot)
+		res, err = engine.Resume(ctx, logsRoot, engine.ResumeOverrides{
+			Registry: newLayeredRegistry(true),
+		})
 	case cxdbBaseURL != "" && contextID != "":
 		res, err = engine.ResumeFromCXDB(ctx, cxdbBaseURL, contextID)
 	case runBranch != "":

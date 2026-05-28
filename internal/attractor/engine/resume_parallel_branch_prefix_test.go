@@ -58,7 +58,7 @@ digraph P {
 		t.Fatalf("Save checkpoint: %v", err)
 	}
 
-	if _, err := Resume(ctx, res.LogsRoot); err != nil {
+	if _, err := Resume(ctx, res.LogsRoot, ResumeOverrides{}); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 

@@ -115,6 +115,7 @@ type RunConfigFile struct {
 
 	Git struct {
 		RequireClean           *bool    `json:"require_clean,omitempty" yaml:"require_clean,omitempty"`
+		BaseRef                string   `json:"base_ref,omitempty" yaml:"base_ref,omitempty"`
 		RunBranchPrefix        string   `json:"run_branch_prefix" yaml:"run_branch_prefix"`
 		CommitPerNode          bool     `json:"commit_per_node" yaml:"commit_per_node"`
 		PushRemote             string   `json:"push_remote,omitempty" yaml:"push_remote,omitempty"`

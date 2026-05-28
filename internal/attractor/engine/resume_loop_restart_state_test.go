@@ -58,7 +58,7 @@ digraph G {
 		t.Fatalf("Save checkpoint: %v", err)
 	}
 
-	_, err = Resume(ctx, res.LogsRoot)
+	_, err = Resume(ctx, res.LogsRoot, ResumeOverrides{})
 	if err == nil || !strings.Contains(err.Error(), "loop_restart limit exceeded") {
 		t.Fatalf("expected loop_restart limit error, got: %v", err)
 	}

@@ -91,7 +91,7 @@ func TestResume_FatalBeforeEngineInit_WritesFallbackFinalJSON(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 
-	_, err := Resume(context.Background(), logsRoot)
+	_, err := Resume(context.Background(), logsRoot, ResumeOverrides{})
 	if err == nil {
 		t.Fatalf("expected resume error, got nil")
 	}

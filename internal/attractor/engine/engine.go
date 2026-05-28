@@ -43,6 +43,10 @@ type RunOptions struct {
 	// If true (default), refuse to start when repo has uncommitted changes.
 	RequireClean bool
 
+	// BaseRef is an optional git ref (branch, tag, SHA) to branch the run worktree from.
+	// When empty, the run branches from repo HEAD.
+	BaseRef string
+
 	// Optional callback invoked after CXDB/UI bootstrap and before pipeline execution starts.
 	// Pointer is used to avoid copying synchronization primitives inside CXDBStartupInfo.
 	OnCXDBStartup func(info *CXDBStartupInfo)
@@ -499,6 +503,12 @@ func (e *Engine) run(ctx context.Context) (res *Result, err error) {
 		baseSHA, err := e.GitOps.HeadSHA(e.Options.RepoPath)
 		if err != nil {
 			return nil, err
+		}
+		if ref := strings.TrimSpace(e.Options.BaseRef); ref != "" {
+			baseSHA, err = e.GitOps.ResolveRef(e.Options.RepoPath, ref)
+			if err != nil {
+				return nil, fmt.Errorf("resolve git.base_ref %q: %w", ref, err)
+			}
 		}
 		e.baseSHA = baseSHA
 	}

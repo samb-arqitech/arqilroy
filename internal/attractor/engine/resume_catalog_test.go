@@ -54,7 +54,7 @@ digraph G {
 
 	// Delete the per-run snapshot and verify resume refuses.
 	_ = os.Remove(filepath.Join(logsRoot, "modeldb", "openrouter_models.json"))
-	if _, err := Resume(ctx, logsRoot); err == nil {
+	if _, err := Resume(ctx, logsRoot, ResumeOverrides{}); err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 }
@@ -123,7 +123,7 @@ digraph G {
 		t.Fatalf("write run_config.json: %v", err)
 	}
 
-	_, err = Resume(ctx, logsRoot)
+	_, err = Resume(ctx, logsRoot, ResumeOverrides{})
 	if err == nil {
 		t.Fatal("expected resume to fail when run_config.json cannot be loaded")
 	}

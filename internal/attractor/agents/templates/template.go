@@ -14,6 +14,7 @@ type Template struct {
 	BuildEnv         func() map[string]string
 	PrepareSession   func(stageDir string, env map[string]string) error // optional pre-session setup (e.g. write config files)
 	StructuredOutput bool                                               // when true, command output is JSONL; handler redirects to agent_output.jsonl
+	PromptFileFlag   string                                             // when set, append flag + stageDir/prompt.md to the command (e.g. "--prompt-file")
 	PromptPrefix     string                                             // prompt prefix for readiness detection
 	BusyIndicators   []string                                           // strings indicating the agent is busy
 	ProcessNames     []string                                           // expected process names for liveness

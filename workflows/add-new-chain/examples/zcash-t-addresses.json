@@ -1,0 +1,14 @@
+{
+  "chain_name": "Zcash",
+  "chain_type": "utxo",
+  "network_id": "zcash",
+  "native_asset": "ZEC",
+  "reference_chain": "bitcoin",
+  "feature_flag": "__ZCASH_ENABLED__",
+  "supported_routes": {
+    "ZEC": ["USDC", "USDT"],
+    "USDC": ["ZEC", "USDT"],
+    "USDT": ["ZEC", "USDC"]
+  },
+  "constraints": "Transparent T-addresses only (t1/t3 on mainnet, tm on testnet/mocknet). Do NOT implement shielded z-addresses or Orchard in this iteration. Clone Bitcoin UTXO HTLC patterns from htlc-btc: P2WSH/P2SH-style scripts adapted for Zcash transparent UTXOs. Address validation must reject z-addresses. Lock order follows DEV-2787 chronological base/match encoding. Trade routes: ZEC↔USDC, ZEC↔USDT, USDC↔USDT with stable→ZEC reversed routes always enabled (post DEV-2986, no reversed-direction flag). Mocknet: zcashd regtest or compatible transparent-only fixture. Document Zcash-specific params: branch id, consensus params, min relay fee, tx expiry if applicable."
+}

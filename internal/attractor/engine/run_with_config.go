@@ -205,6 +205,7 @@ func bootstrapRunWithConfig(ctx context.Context, dotSource []byte, cfg *RunConfi
 	opts := RunOptions{
 		RepoPath:        cfg.Repo.Path,
 		RunBranchPrefix: cfg.Git.RunBranchPrefix,
+		BaseRef:         strings.TrimSpace(cfg.Git.BaseRef),
 		StageTimeout:    durationFromOptionalMSOrDisabled(cfg.RuntimePolicy.StageTimeoutMS),
 		StallTimeout:    durationFromOptionalMSOrDisabled(cfg.RuntimePolicy.StallTimeoutMS),
 		StallCheckInterval: durationFromOptionalMSOrDisabled(
