@@ -6,8 +6,9 @@
 import { Agent } from "@cursor/sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const HELP = `Usage: kilroy-cursor-agent run --cwd <dir> --model <id> [--stream-json] [--output-format json] [--agent-id <id>] [--interactive] [--append-system-prompt <text>]
+const HELP = `Usage: kilroy-cursor-agent run --cwd <dir> --model <id> [--stream-json] [--output-format json] [--agent-id <id>] [--interactive] [--append-system-prompt <text>] [--prompt-file <path>]
        kilroy-cursor-agent --help
 
 Local agent runs via @cursor/sdk. Requires CURSOR_API_KEY.
@@ -22,7 +23,13 @@ type Args = {
   agentId?: string;
   interactive: boolean;
   appendSystemPrompt?: string;
+  promptFile?: string;
   help: boolean;
+};
+
+type ModelSelection = {
+  id: string;
+  params?: Array<{ id: string; value: string }>;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -74,6 +81,9 @@ function parseArgs(argv: string[]): Args {
       case "--append-system-prompt":
         out.appendSystemPrompt = argv[i++];
         break;
+      case "--prompt-file":
+        out.promptFile = argv[i++] ?? "";
+        break;
       case "--help":
       case "-h":
         out.help = true;
@@ -88,11 +98,18 @@ function parseArgs(argv: string[]): Args {
 
 /** Map legacy CLI model IDs to Cursor SDK model IDs. */
 export function toCursorModelId(raw: string): string {
+  return toCursorModelSelection(raw).id;
+}
+
+export function toCursorModelSelection(raw: string): ModelSelection {
   const id = raw.trim();
   if (!id) {
-    return "composer-2.5";
+    return { id: "composer-2.5" };
   }
   const lower = id.toLowerCase();
+  if (lower === "composer-2.5-fast" || lower === "composer-2-fast") {
+    return { id: "composer-2.5", params: [{ id: "fast", value: "true" }] };
+  }
   if (
     lower.startsWith("composer-") ||
     lower.startsWith("gpt-") ||
@@ -100,18 +117,18 @@ export function toCursorModelId(raw: string): string {
     lower.startsWith("o3") ||
     lower.startsWith("o4")
   ) {
-    return id;
+    return { id };
   }
   if (lower.includes("haiku") || lower.includes("flash") || lower.includes("mini")) {
-    return "composer-2-fast";
+    return { id: "composer-2.5", params: [{ id: "fast", value: "true" }] };
   }
   if (lower.includes("opus") || lower.includes("sonnet") || lower.includes("pro")) {
-    return "composer-2.5";
+    return { id: "composer-2.5" };
   }
   if (lower.includes("codex") || lower.includes("gpt-5")) {
-    return "composer-2.5";
+    return { id: "composer-2.5" };
   }
-  return "composer-2.5";
+  return { id: "composer-2.5" };
 }
 
 function emitStreamLine(payload: Record<string, unknown>): void {
@@ -180,6 +197,16 @@ async function readStdinPrompt(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+export async function readPromptFromArgs(args: Args): Promise<string> {
+  if (args.promptFile !== undefined) {
+    if (!args.promptFile.trim()) {
+      throw new Error("--prompt-file requires a file path");
+    }
+    return fs.promises.readFile(path.resolve(args.promptFile), "utf8");
+  }
+  return readStdinPrompt();
+}
+
 async function runHeadless(args: Args, prompt: string): Promise<number> {
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) {
@@ -193,7 +220,8 @@ async function runHeadless(args: Args, prompt: string): Promise<number> {
     return 2;
   }
 
-  const modelId = toCursorModelId(args.model);
+  const modelSelection = toCursorModelSelection(args.model);
+  const modelId = modelSelection.id;
   let fullPrompt = prompt;
   if (args.appendSystemPrompt?.trim()) {
     fullPrompt = `${args.appendSystemPrompt.trim()}\n\n${prompt}`;
@@ -206,7 +234,7 @@ async function runHeadless(args: Args, prompt: string): Promise<number> {
         ? await Agent.resume(args.agentId, { apiKey })
         : await Agent.create({
             apiKey,
-            model: { id: modelId },
+            model: modelSelection,
             local: { cwd },
           });
   } catch (err) {
@@ -337,13 +365,23 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const promptFromStdin = await readStdinPrompt();
-  const code = await runHeadless(args, promptFromStdin);
+  let prompt: string;
+  try {
+    prompt = await readPromptFromArgs(args);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`kilroy-cursor-agent: ${message}\n`);
+    process.exit(2);
+  }
+
+  const code = await runHeadless(args, prompt);
   process.exit(code);
 }
 
-main().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`kilroy-cursor-agent: ${message}\n`);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`kilroy-cursor-agent: ${message}\n`);
+    process.exit(1);
+  });
+}
