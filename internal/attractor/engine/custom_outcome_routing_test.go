@@ -4,11 +4,101 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/danshapiro/kilroy/internal/attractor/model"
 	"github.com/danshapiro/kilroy/internal/attractor/runtime"
 )
+
+type customDecisionHandler struct {
+	status runtime.StageStatus
+}
+
+func (h customDecisionHandler) Execute(ctx context.Context, exec *Execution, node *model.Node) (runtime.Outcome, error) {
+	_ = ctx
+	_ = exec
+	_ = node
+	return runtime.Outcome{Status: h.status}, nil
+}
+
+func TestRun_BoxNodeCustomOutcome_PassesThroughDiamondRouter(t *testing.T) {
+	repo := initTestRepo(t)
+	logsRoot := t.TempDir()
+
+	dot := []byte(`
+digraph G {
+  graph [goal="test custom decision routed by downstream diamond", default_max_retry=0]
+  start [shape=Mdiamond]
+  decide [shape=box, type="custom_decision", llm_provider=openai, llm_model=gpt-5.4]
+  route [shape=diamond]
+  replan [shape=parallelogram, tool_command="echo replan > chosen.txt"]
+  repair [shape=parallelogram, tool_command="echo repair > chosen.txt"]
+  exit [shape=Msquare]
+
+  start -> decide
+  decide -> route
+  route -> replan [condition="outcome=needs_replan"]
+  route -> repair [condition="outcome=impl_repair"]
+  route -> repair
+  replan -> exit [condition="outcome=success"]
+  repair -> exit [condition="outcome=success"]
+}
+`)
+	g, _, err := Prepare(dot)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	opts := RunOptions{RepoPath: repo, RunID: "custom-outcome-router", LogsRoot: logsRoot}
+	if err := opts.applyDefaults(); err != nil {
+		t.Fatalf("applyDefaults: %v", err)
+	}
+	eng := &Engine{
+		Graph:        g,
+		Options:      opts,
+		DotSource:    dot,
+		LogsRoot:     opts.LogsRoot,
+		WorktreeDir:  opts.WorktreeDir,
+		Context:      runtime.NewContext(),
+		Registry:     NewDefaultRegistry(),
+		Interviewer:  &AutoApproveInterviewer{},
+		AgentBackend: &SimulatedAgentBackend{},
+	}
+	eng.Registry.Register("custom_decision", customDecisionHandler{status: runtime.StageStatus("needs_replan")})
+	eng.RunBranch = "attractor/run/" + opts.RunID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := eng.run(ctx)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if res.FinalStatus != runtime.FinalSuccess {
+		t.Fatalf("final status: got %q want %q", res.FinalStatus, runtime.FinalSuccess)
+	}
+
+	chosen, err := os.ReadFile(filepath.Join(eng.WorktreeDir, "chosen.txt"))
+	if err != nil {
+		t.Fatalf("read chosen.txt: %v", err)
+	}
+	if got := strings.TrimSpace(string(chosen)); got != "replan" {
+		t.Fatalf("chosen route: got %q want replan", got)
+	}
+
+	b, err := os.ReadFile(filepath.Join(logsRoot, "route", "status.json"))
+	if err != nil {
+		t.Fatalf("read route/status.json: %v", err)
+	}
+	out, err := runtime.DecodeOutcomeJSON(b)
+	if err != nil {
+		t.Fatalf("decode route/status.json: %v", err)
+	}
+	if out.Status != runtime.StageStatus("needs_replan") {
+		t.Fatalf("route status: got %q want needs_replan", out.Status)
+	}
+}
 
 // TestRun_BoxNodeCustomOutcome_RoutesWithoutRetry verifies that a shape=box
 // (agent) node returning a custom outcome (e.g. "needs_dod") routes via
@@ -74,8 +164,8 @@ digraph G {
   check_dod -> dod_gen [condition="outcome=needs_dod"]
   check_dod -> plan [condition="outcome=has_dod"]
   check_dod -> plan
-  dod_gen -> exit
-  plan -> exit
+  dod_gen -> exit [condition="outcome=success"]
+  plan -> exit [condition="outcome=success"]
 }
 `)
 
@@ -181,8 +271,8 @@ digraph G {
   check_dod -> dod_gen [condition="outcome=needs_dod"]
   check_dod -> plan [condition="outcome=has_dod"]
   check_dod -> plan
-  dod_gen -> exit
-  plan -> exit
+  dod_gen -> exit [condition="outcome=success"]
+  plan -> exit [condition="outcome=success"]
 }
 `)
 
@@ -257,7 +347,7 @@ digraph G {
   check_dod -> merge
   dod_a -> merge
   dod_b -> merge
-  merge -> exit
+  merge -> exit [condition="outcome=success"]
 }
 `)
 
@@ -291,9 +381,9 @@ digraph G {
 	}
 }
 
-// TestRun_BoxNodeCustomOutcome_ContextDependentCondition verifies that
-// hasMatchingOutgoingCondition evaluates against the live run context, not
-// an empty context. Edges with context.* conditions must match correctly.
+// TestRun_BoxNodeCustomOutcome_ContextDependentCondition verifies that custom
+// outcome routing evaluates against the live run context, not an empty context.
+// Edges with context.* conditions must match correctly.
 func TestRun_BoxNodeCustomOutcome_ContextDependentCondition(t *testing.T) {
 	cleanupStrayEngineArtifacts(t)
 	t.Cleanup(func() { cleanupStrayEngineArtifacts(t) })
@@ -346,8 +436,8 @@ digraph G {
   router -> target_a [condition="outcome=route_me && context.phase=dod"]
   router -> target_b [condition="outcome=route_me && context.phase=plan"]
   router -> target_b
-  target_a -> exit
-  target_b -> exit
+  target_a -> exit [condition="outcome=success"]
+  target_b -> exit [condition="outcome=success"]
 }
 `)
 
