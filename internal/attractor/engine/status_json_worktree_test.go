@@ -8,8 +8,85 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danshapiro/kilroy/internal/attractor/model"
 	"github.com/danshapiro/kilroy/internal/attractor/runtime"
 )
+
+type explicitOutcomeStatusWriterHandler struct{}
+
+func (h *explicitOutcomeStatusWriterHandler) Execute(ctx context.Context, exec *Execution, node *model.Node) (runtime.Outcome, error) {
+	_ = ctx
+	_ = node
+	if err := os.WriteFile(filepath.Join(exec.WorktreeDir, "status.json"), []byte(`{"status":"fail","failure_reason":"worktree status overrides explicit success"}`), 0o644); err != nil {
+		return runtime.Outcome{}, err
+	}
+	return runtime.Outcome{Status: runtime.StatusSuccess, Notes: "explicit handler success"}, nil
+}
+
+func TestRunWithConfig_HandlerWorktreeStatusOverridesExplicitOutcome(t *testing.T) {
+	cleanupStrayEngineArtifacts(t)
+	t.Cleanup(func() { cleanupStrayEngineArtifacts(t) })
+
+	repo := initTestRepo(t)
+	g, _, err := Prepare([]byte(`
+digraph G {
+  graph [goal="explicit handler worktree status"]
+  start [shape=Mdiamond]
+  exit  [shape=Msquare]
+
+  a [shape=diamond, type="explicit_status_writer"]
+  fix [shape=parallelogram, tool_command="echo fixed > fixed.txt"]
+
+  start -> a
+  a -> fix [condition="outcome=fail"]
+  a -> exit [condition="outcome=success"]
+  a -> fix
+  fix -> exit [condition="outcome=success"]
+}
+`))
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	opts := RunOptions{RepoPath: repo, RunID: "explicit-status-writer", LogsRoot: t.TempDir()}
+	if err := opts.applyDefaults(); err != nil {
+		t.Fatalf("applyDefaults: %v", err)
+	}
+	eng := &Engine{
+		Graph:        g,
+		Options:      opts,
+		LogsRoot:     opts.LogsRoot,
+		WorktreeDir:  opts.WorktreeDir,
+		Context:      runtime.NewContext(),
+		Registry:     NewDefaultRegistry(),
+		Interviewer:  &AutoApproveInterviewer{},
+		AgentBackend: &SimulatedAgentBackend{},
+	}
+	eng.Registry.Register("explicit_status_writer", &explicitOutcomeStatusWriterHandler{})
+	eng.RunBranch = "attractor/run/" + opts.RunID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := eng.run(ctx)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	b, err := os.ReadFile(filepath.Join(res.LogsRoot, "a", "status.json"))
+	if err != nil {
+		t.Fatalf("read a/status.json: %v", err)
+	}
+	out, err := runtime.DecodeOutcomeJSON(b)
+	if err != nil {
+		t.Fatalf("decode a/status.json: %v", err)
+	}
+	if out.Status != runtime.StatusFail {
+		t.Fatalf("a status: got %q want %q (out=%+v)", out.Status, runtime.StatusFail, out)
+	}
+	if got := strings.TrimSpace(runCmdOut(t, repo, "git", "show", res.FinalCommitSHA+":fixed.txt")); got != "fixed" {
+		t.Fatalf("fixed.txt: got %q want %q", got, "fixed")
+	}
+}
 
 func TestRunWithConfig_CLIBackend_WorktreeStatusJSON_IsTreatedAsStageStatus(t *testing.T) {
 	cleanupStrayEngineArtifacts(t)
@@ -60,7 +137,7 @@ digraph G {
   a -> fix [condition="outcome=fail"]
   a -> exit [condition="outcome=success"]
   a -> fix
-  fix -> exit
+  fix -> exit [condition="outcome=success"]
 }
 `)
 
@@ -139,7 +216,8 @@ digraph G {
 
   a [shape=box, llm_provider=openai, llm_model=gpt-5.4, prompt="do the thing"]
 
-  start -> a -> exit
+  start -> a
+  a -> exit [condition="outcome=success"]
 }
 `)
 
@@ -243,7 +321,7 @@ digraph G {
   a -> fix [condition="outcome=fail"]
   a -> exit [condition="outcome=success"]
   a -> fix
-  fix -> exit
+  fix -> exit [condition="outcome=success"]
 }
 `)
 
@@ -350,7 +428,7 @@ digraph G {
   a -> fix [condition="outcome=fail"]
   a -> exit [condition="outcome=success"]
   a -> fix
-  fix -> exit
+  fix -> exit [condition="outcome=success"]
 }
 `)
 
@@ -448,7 +526,8 @@ digraph G {
   start [shape=Mdiamond]
   exit  [shape=Msquare]
   a [shape=box, llm_provider=openai, llm_model=gpt-5.4, prompt="do the thing"]
-  start -> a -> exit
+  start -> a
+  a -> exit [condition="outcome=success"]
 }
 `)
 

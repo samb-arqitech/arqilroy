@@ -1264,16 +1264,21 @@ func (e *Engine) executeNode(ctx context.Context, node *model.Node) (runtime.Out
 
 	h := e.Registry.Resolve(node)
 	stageDir := filepath.Join(e.LogsRoot, node.ID)
+	stageStatusPath := filepath.Join(stageDir, "status.json")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return runtime.Outcome{Status: runtime.StatusFail, FailureReason: err.Error()}, err
 	}
 	// Nodes may execute multiple times (retry policy, goal gates, manual restarts). If a previous
 	// attempt left a status.json behind and the handler doesn't write a new one, we'd incorrectly
 	// treat the stale file as authoritative. Clear it before each attempt.
-	_ = os.Remove(filepath.Join(stageDir, "status.json"))
+	_ = os.Remove(stageStatusPath)
+	statusContract := BuildStageStatusContract(e.WorktreeDir)
+	for _, fallback := range statusContract.Fallbacks {
+		_ = os.Remove(fallback.Path)
+	}
 	if err := e.materializeStageInputs(ctx, node.ID); err != nil {
 		out := inputFailureOutcomeFromMaterializationError(err)
-		_ = writeJSON(filepath.Join(stageDir, "status.json"), out)
+		_ = writeJSON(stageStatusPath, out)
 		return out, nil
 	}
 	var (
@@ -1317,8 +1322,31 @@ func (e *Engine) executeNode(ctx context.Context, node *model.Node) (runtime.Out
 		out.FailureReason = err.Error()
 	}
 
+	if len(statusContract.Fallbacks) > 0 {
+		source, ingestionDiagnostic, copyErr := CopyFirstValidFallbackStatus(stageStatusPath, statusContract.Fallbacks)
+		if copyErr != nil {
+			reason := copyErr.Error()
+			if strings.TrimSpace(ingestionDiagnostic) != "" {
+				reason = reason + "; " + strings.TrimSpace(ingestionDiagnostic)
+			}
+			out = runtime.Outcome{Status: runtime.StatusFail, FailureReason: reason}
+		}
+		if source == StatusSourceWorktree || source == StatusSourceDotAI || copyErr != nil {
+			progress := map[string]any{
+				"event":   "status_ingestion_decision",
+				"node_id": node.ID,
+				"source":  string(source),
+				"copied":  source == StatusSourceWorktree || source == StatusSourceDotAI,
+			}
+			if strings.TrimSpace(ingestionDiagnostic) != "" {
+				progress["diagnostic"] = strings.TrimSpace(ingestionDiagnostic)
+			}
+			e.appendProgress(progress)
+		}
+	}
+
 	// If the handler (or external tool) wrote status.json, treat it as authoritative.
-	if b, readErr := os.ReadFile(filepath.Join(stageDir, "status.json")); readErr == nil {
+	if b, readErr := os.ReadFile(stageStatusPath); readErr == nil {
 		if parsed, decErr := runtime.DecodeOutcomeJSON(b); decErr == nil {
 			out = parsed
 		}
@@ -1366,7 +1394,7 @@ func (e *Engine) executeNode(ctx context.Context, node *model.Node) (runtime.Out
 	}
 
 	// Write status.json (canonical metaspec shape).
-	_ = writeJSON(filepath.Join(stageDir, "status.json"), out)
+	_ = writeJSON(stageStatusPath, out)
 	if err := e.advanceLineageAfterStage(node.ID); err != nil {
 		out = runtime.Outcome{
 			Status:        runtime.StatusFail,
@@ -1376,7 +1404,7 @@ func (e *Engine) executeNode(ctx context.Context, node *model.Node) (runtime.Out
 			},
 			SuggestedNextIDs: []string{},
 		}
-		_ = writeJSON(filepath.Join(stageDir, "status.json"), out)
+		_ = writeJSON(stageStatusPath, out)
 	}
 	return out, nil
 }
