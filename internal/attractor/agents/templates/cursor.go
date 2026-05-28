@@ -13,7 +13,7 @@ func Cursor() Template {
 	return Template{
 		Name:       "cursor",
 		Binary:     cursoragent.ResolveExecutable(),
-		LogLocator:  nil,
+		LogLocator: nil,
 		BuildArgs: func(prompt, workDir, model string) []string {
 			args := []string{
 				"run",
