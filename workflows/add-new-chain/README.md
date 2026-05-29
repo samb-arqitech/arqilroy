@@ -100,6 +100,39 @@ Routes enabled by the example input:
 - `.ai/runs/<run_id>/chain-integration-spec.md`
 - `.ai/runs/<run_id>/chain-checklist.md`
 
+## CI verification gate (`verify_ci`)
+
+After local validators and `verify_fidelity` pass, the graph runs `verify-pr-ci.sh`, which polls GitHub PR checks until required jobs are green. A run cannot reach terminal success while required CI jobs are failing.
+
+### Prerequisites
+
+- `gh` CLI installed and authenticated (`gh auth login` or `GH_TOKEN` with `repo` scope)
+- Feature branch pushed to origin (script pushes `HEAD:<branch>` if needed)
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `KILROY_RUN_ID` | yes | — | Run ID for evidence paths |
+| `GITHUB_REPO` | yes | — | e.g. `Arqitech-Inc/atomic-swap-app` |
+| `PR_NUMBER` | no | derived from `--head` branch | Open PR to poll |
+| `CI_REQUIRED_JOBS` | no | see script | Comma-separated `gh pr checks` job names |
+| `CI_POLL_TIMEOUT_SEC` | no | `3600` | Max wait time |
+| `CI_POLL_INTERVAL_SEC` | no | `60` | Poll interval |
+
+Default required jobs (must match `.github/workflows/ci.yml` job `name:` fields):
+
+`Quality Checks`, `Backend Tests`, `E2E Tests (UI)`, `Documentation Validation`, `Contract Quality Checks`
+
+### Evidence
+
+Written under `.ai/runs/<run_id>/test-evidence/latest/ci/`:
+
+- `checks-summary.json` / `checks-raw.txt`
+- `verify-ci.md` — per-job status summary
+
+On CI failure, postmortem routes to `impl_repair` with `failure_signature=ci_checks_failed`.
+
 ## Reference analysis
 
 This workflow was derived from diff analysis of:

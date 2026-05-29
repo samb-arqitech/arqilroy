@@ -43,7 +43,7 @@ digraph add_new_chain {
     subgraph cluster_dod {
         label="DoD"
         dod_fanout [shape=component, label="DoD Fan-Out"]
-        dod_a [shape=box, class="branch-a", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_a.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
+        dod_a [shape=box, class="branch-a", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_a.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nInclude CI acceptance: AC-CI-1 required job names match .github/workflows/ci.yml name: fields; AC-CI-2 verify_ci evidence under test-evidence/latest/ci/; AC-CI-3 run cannot succeed while required CI jobs fail.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
         dod_b [shape=box, class="branch-b", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_b.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
         dod_c [shape=box, class="branch-c", auto_status=true, prompt="Read .ai/runs/$KILROY_RUN_ID/spec.md. Write chain-integration DoD to .ai/runs/$KILROY_RUN_ID/dod_c.md with verifiable AC items per layer: shared constants, prisma, backend services, client wallet/htlc, mocknet, tests, operator skills. Include IT-* integration scenarios.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
         consolidate_dod [shape=box, auto_status=true, prompt="Synthesize dod_a/b/c into .ai/runs/$KILROY_RUN_ID/definition_of_done.md. Read parallel_results.json worktrees if present.\n\nWrite to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH) ONLY on failure: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_class\":\"deterministic\"}"]
@@ -186,15 +186,21 @@ digraph add_new_chain {
         verify_fidelity [
             shape=box,
             class="verify",
-            prompt="Read .ai/runs/$KILROY_RUN_ID/definition_of_done.md and chain-checklist.md. Verify each AC by ID against implementation.\n\nWrite .ai/runs/$KILROY_RUN_ID/verify_fidelity.md.\n\nPass: {\"status\":\"success\"}. Fail: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_signature\":\"ac_verification_failed\",\"failure_class\":\"deterministic\"} to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+            prompt="Read .ai/runs/$KILROY_RUN_ID/definition_of_done.md and chain-checklist.md. Verify each AC by ID against implementation.\n\nAlso read .ai/runs/$KILROY_RUN_ID/test-evidence/latest/ci/verify-ci.md when present (AC-CI-*).\n\nWrite .ai/runs/$KILROY_RUN_ID/verify_fidelity.md.\n\nPass: {\"status\":\"success\"}. Fail: {\"status\":\"fail\",\"failure_reason\":\"...\",\"failure_signature\":\"ac_verification_failed\",\"failure_class\":\"deterministic\"} to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
         ]
         check_impl [shape=diamond, label="Impl OK?"]
+
+        verify_ci [
+            shape=parallelogram,
+            tool_command="sh .kilroy/package/scripts/verify-pr-ci.sh || { echo 'KILROY_VALIDATE_FAILURE: CI checks failed or timed out'; exit 1; }"
+        ]
+        check_ci [shape=diamond, label="CI OK?"]
     }
 
     postmortem [
         shape=box,
         auto_status=true,
-        prompt="Read verify_fidelity failure, test-evidence manifest, postmortem context key last_failing_acs.\n\nWrite .ai/runs/$KILROY_RUN_ID/postmortem_latest.md with routing recommendation.\n\nCompare failing AC set to last_failing_acs — if identical, route needs_replan.\n\nOutcomes via status: impl_repair, needs_replan, needs_toolchain. Write to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
+        prompt="Read verify_fidelity or verify_ci failure, test-evidence manifest, postmortem context key last_failing_acs.\n\nWrite .ai/runs/$KILROY_RUN_ID/postmortem_latest.md with routing recommendation.\n\nCompare failing AC set to last_failing_acs — if identical, route needs_replan.\n\nCI failure (failure_signature=ci_checks_failed): route impl_repair.\n\nOutcomes via status: impl_repair, needs_replan, needs_toolchain. Write to $KILROY_STAGE_STATUS_PATH (fallback: $KILROY_STAGE_STATUS_FALLBACK_PATH)."
     ]
 
     route_postmortem [shape=diamond, label="Postmortem route?"]
@@ -269,9 +275,13 @@ digraph add_new_chain {
     check_artifacts -> postmortem [label="fail", condition="outcome=fail"]
     check_artifacts -> postmortem [label="fallback"]
     verify_fidelity -> check_impl
-    check_impl -> exit [label="pass", condition="outcome=success"]
+    check_impl -> verify_ci [label="pass", condition="outcome=success"]
     check_impl -> postmortem [label="fail", condition="outcome=fail"]
     check_impl -> postmortem [label="fallback"]
+    verify_ci -> check_ci
+    check_ci -> exit [label="pass", condition="outcome=success"]
+    check_ci -> postmortem [label="fail", condition="outcome=fail"]
+    check_ci -> postmortem [label="fallback"]
 
     // Postmortem routing
     postmortem -> route_postmortem
